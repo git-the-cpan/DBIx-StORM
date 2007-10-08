@@ -1,0 +1,15 @@
+Revision history for Perl extension DBIx::StORM.
+
+0.03  Mon Oct 08 23:36:00 2007
+        - rename from DBIx::OODB to DBIx::StORM
+	- inclusion of API documentation
+
+0.02  Fri Apr 13 23:01:44 2007
+	- database connections now operate like hashes
+	- results now operate like hashes
+	- some basic schema awareness
+	- rewrote the opcode compilation to use xpath
+
+0.01  Sat Dec 16 23:04:45 2006
+	- original version
+

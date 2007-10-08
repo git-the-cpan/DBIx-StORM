@@ -1,0 +1,18 @@
+# http://module-build.sourceforge.net/META-spec.html
+#XXXXXXX This is a prototype!!!  It will change in the future!!! XXXXX#
+name:         DBIx-StORM
+version:      0.03
+version_from: lib/DBIx/StORM.pm
+installdirs:  site
+requires:
+    B:                             0
+    B::Concise:                    0
+    Carp:                          0
+    constant:                      0
+    DBI:                           0
+    FindBin:                       0
+    overload:                      0
+    XML::XPath:                    0
+
+distribution_type: module
+generated_by: ExtUtils::MakeMaker version 6.30

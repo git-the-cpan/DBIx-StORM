@@ -1,0 +1,42 @@
+DBIx-StORM version 0.03
+=======================
+
+An embryonic, but advanced database-driven Perl ORM with support for
+optimised native-language queries, foreign key support with hinting and
+learning-based field selection.
+
+More information can be found in the DBIx::StORM::Tutorial document.
+
+WARNING
+
+This code is very much alpha quality, and large portions of the design
+are incomplete. There are several known bugs in this version. It is
+published in the hope that it offers interesting ideas and spurs
+development. Bug reports, patches and development help are very
+welcome! Please file bug reports via CPAN.
+
+INSTALLATION
+
+To install this module type the following:
+
+   perl Makefile.PL
+   make
+   make test
+   make install
+
+DEPENDENCIES
+
+This module requires these other modules and libraries:
+
+  Perl v5.6.0 or later
+  DBI
+  XML::XPath
+
+COPYRIGHT AND LICENCE
+
+Copyright (C) 2006-2007 by Luke Ross
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself, either Perl version 5.6.0 or,
+at your option, any later version of Perl 5 you may have available.
+

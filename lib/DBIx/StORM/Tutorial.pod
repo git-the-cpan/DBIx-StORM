@@ -1,0 +1,253 @@
+=head1 NAME
+
+DBIx::StORM - Perl extension for object-relational mapping
+
+=head1 TWO-MINUTE INTRODUCTION
+
+You can establish a new connection in pretty much the same way as you create
+a DBI connection - just pass it standard DBI parameters:
+
+  my $connection = DBIx::StORM->connect($dbi_dsn, $username, $password);
+
+A connection works like a reference to a hash of of Tables:
+
+  my $my_table = $connection->{my_table}; # Fetches my_table from the DB
+
+A Table is a type of RecordSet. A RecordSet is an array reference you can
+foreach over to see what's inside:
+
+  foreach my $record (@$my_table) {
+    print "I found a row in the database: $record\n"; 
+  }
+
+Each record in the RecordSet works like a hash reference too, so you can
+easily extract the columns:
+
+  foreach my $record (@$my_table) {
+    my $name = $record->{name};
+    print "Record $record has value $name in the name column\n"; 
+  }
+
+You can grep and sort RecordSets using perl code to get a new RecordSet
+(sadly you need the ugly C<sub> keywords):
+
+  my $bobs_results = $my_table->grep(sub { $_->{name} eq "Bob" });
+
+  my $results_sorted_by_age = $bobs_results->sort(sub {
+    $a->{age} <=> $b->{age}
+  });
+
+=head1 DESCRIPTION
+
+DBIx::StORM is an object-relational mapper designed to provide easy
+database-vendor-independent access to a DBI-accessible database by allowing
+you to access a relational database in an object-oriented fashion.
+
+There are many more complete ORMs available but DBIx::StORM has a different
+take on how interaction with the database should be achieved.
+
+=head1 DESIGN PRINCIPLES
+
+As you're using an alpha version, not all of these are fully realised yet.
+
+=over
+
+=item * Gets to work quickly with your database
+
+DBI::StORM is designed to work around your database. You don't have to
+follow any naming conventions on your tables or columns.  The module will
+find out the primary and foreign keys in your database, and will help you
+walk the foreign keys.
+
+If your database schema is lacking the necessary metadata you can point
+the module in the right direction with the C<$dbix_storm-E<gt>add_hint>
+method.
+
+=item * Connection-centric, not class-centric
+
+Tables are accessed via the connection object and not via a specific class,
+which makes it easy to access new tables. If you want to set up a class
+that maps to a given table, you can use the helper class to do this.
+
+=item * Finding and sorting should follow perl
+
+DBIx::StORM provides the C<grep> and C<sort> methods which like the perl
+operators accept a subroutine reference that can do whatever you want them
+to. No passing round chunks of SQL, custom pseudo-code or lists of string
+operators. Your perl subs are syntax-checked at compile time just as normal.
+
+=item * But this shouldn't come at the cost of performance
+
+DBIx::StORM will examine your subroutines and understand what it is trying to
+do. It can then turn it into SQL and use the power of the database to your
+advantage. This gives you the best of both worlds - the portability of perl
+code to query the database, but the performance of the native database query.
+Judicious use of caching means that the subroutine should only be compiled
+when needed.
+
+=item * Objects should feel like corresponding perl datatypes
+
+Using perl's overloading, you can examine the tables in a connection by
+treating it like a hash reference, a result set works like an array reference
+and a record works like a hash reference. You get the power of standard perl
+functions to access your data.
+
+=back
+
+=head1 CRUD
+
+Most ORMs are designed to meet the needs of the standard CRUD application -
+Create, Read, Update and Delete. Let's see how DBIx::StORM allows you to
+operate on your data. Note that this is about data modification - DBIx::StORM
+doesn't yet permit table modification.
+
+=head2 CONNECT
+
+Connecting works just like DBI. You pass the same parameters as you would
+when connecting to your database with DBI, and DBIx::StORM will set up the
+database connection for you and work out what is on the other end of the
+connection:
+
+  my $connection = DBIx::StORM->connect(
+    "DBI:mydb:database=test_database",
+    "my_username",
+    "my_password",
+  ) or die("Connection error");
+
+=head2 CREATE
+
+Once you've got a connection, you can easily insert a row by calling the
+C<insert> method on a DBIx::StORM::Table object fetched from the connection.
+
+The insert method takes a subroutine reference. Inside the subroutine, $_
+is set to the DBIx::StORM::Record object about to be inserted. You can
+set the columns on the record, and at the end of the subroutine the record
+is inserted.
+
+  $connection->{my_table}->insert(sub {
+    $_->{my_id}   = 1;
+    $_->{my_name} = "John";
+  });
+
+Want to insert a lot of data at once? You can re-use the subroutine to insert
+the rows in a loop.
+
+  my $table = $connection->{fruit};
+  
+  foreach my $fruit (qw(apples oranges strawberries)) {
+    $table->insert(sub { $_->{type} = $fruit; });
+  }
+
+=head2 READ
+
+The connection object is a hash reference that contains all of the tables
+available in this database. You can iterate over the tables as follows:
+
+  while(my ($table) = each %$connection) {
+    print "This connection contains $table\n";
+  }
+
+Each of these tables is a type of DBIx::StORM::RecordSet, which
+conceptually is a list of records in the table. Each record is of type
+DBIx::StORM::Record:
+
+  my $table = $connection->{my_table};
+  print "This table contains ", scalar(@$table), " records\n";
+
+Each DBIx::StORM::Record behaves like a hash reference, where each key
+is a column name, and the value is a column value:
+
+  foreach my $record (@$table) {
+    print "ID: ", $record->{id}, " Name: ", $record->{name}, "\n";
+  }
+
+If the column is a foreign key, the column value is another DBIx::StORM::Record
+object. If you print the object then you can find out the ID, but you can
+also treat it like a hash reference too.
+
+  print "Order ", $order->{id}, " was ordered by ",
+    $order->{customer}->{name}, "\n";
+
+You can limit the results to those that match specific criteria with the
+C<grep> method. This method takes a perl subroutine reference which is
+called for each record in the RecordSet, with $_ set to the DBIx::StORM::Record
+object for the record. The method returns a new DBIx::StORM::RecordSet which
+only contains records for which the subroutine returns true:
+
+  # Find only orders worth more than £100
+  my $high_value_orderes = $orders->grep(sub { $_->{value} > 100 });
+
+You can sort the results with the C<sort> method. This method takes a perl
+subroutine reference which is called for each record in the RecordSet, with
+$_ set to the DBIx::StORM::Record object for the record. The method returns
+a new DBIx::StORM::RecordSet, sorted according to the return value of the
+subroutine. See information on perl's L<sort> operator to see how this works:
+
+  # Sort by order value
+  my $sorted_results = $orders->sort(sub { $a->{value} <=> $b->{value} });
+
+To finish off, here's a way to iterate through every table, every record in
+the table, and print every column in each record. Beware! It may generate
+a I<lot> of output!
+
+  while(my ($table_name, $table) = each %$connection) {
+    print "Displaying table: $table_name\n\n";
+
+    foreach my $record (@$table) {
+      print "Record with primary key $record\n";
+
+      while(my ($column_name, $value) = each %$record) {
+        print "  $column_name = $value";
+        print " and is a foreign key" if ref($value);
+        print "\n";
+      }
+    }
+  }
+
+=head2 UPDATE
+
+If you want to update a specific record, you can set the hash keys to
+update the value. The update will be written back to the database immediately.
+
+  # Update order price to be £40 more
+  $order->{value} += 40;
+
+All DBIx::StORM::RecordSet objects (eg. tables, and those returned by
+C<sort> and C<grep>) have an update method which accepts a subroutine
+reference. This subroutine reference is called for each record in the
+RecordSet, and has $_ set to each DBIx::StORM::Record in turn. You can update
+the records in this subroutine:
+
+  # All open orders now cost 5.95 more to allow for shipping
+  $open_orders = $orders->grep({ $_->{status} eq "open" });
+  $open_orders->update(sub { $_->{value} += 5.95 });
+
+=head2 DELETE
+
+All DBIx::StORM::Record objects have a C<delete> method which immediately
+removes the record from the database table:
+
+  $record->delete()
+  # $record now won't work and will die if you attempt to do so
+
+To mass-delete records, RecordSet objects also have a C<delete> method
+that deletes all the Record objects in the RecordSet:
+
+  # Delete all shipped orders
+  my $shipped_orders = $orders->grep(sub { $_->{status} eq "shipped" });
+  $shipped_orders->delete();
+  # $shipped_orders should now be an empty RecordSet
+
+=head1 AUTHOR
+
+Luke Ross, E<lt>luke@lukeross.nameE<gt>
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright (C) 2006-2007 by Luke Ross
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself, either Perl version 5.6.0 or,
+at your option, any later version of Perl 5 you may have available.
+
+=cut
