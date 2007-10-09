@@ -1,5 +1,9 @@
 Revision history for Perl extension DBIx::StORM.
 
+0.04  Tue Oct 09 19:45:00 2007
+	- Better compatibility with perl v5.6.0
+	- Fix for issue with SVOPs on FreeBSD
+
 0.03  Mon Oct 08 23:36:00 2007
         - rename from DBIx::OODB to DBIx::StORM
 	- inclusion of API documentation

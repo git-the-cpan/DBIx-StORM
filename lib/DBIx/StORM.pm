@@ -21,14 +21,13 @@ use 5.006;
 use strict;
 use warnings;
 
-use constant {
-	DBIH      => 0,
-	SQLDRIVER => 1,
-	TIED      => 2,
-	INFLATE   => 3
-};
-use overload '%{}'    => "_as_tied_hash",
-             fallback => 1;
+use constant DBIH      => 0;
+use constant SQLDRIVER => 1;
+use constant TIED      => 2;
+use constant INFLATE   => 3;
+
+use overload '%{}'     => "_as_tied_hash",
+             fallback  => 1;
 
 use DBI;
 
@@ -46,7 +45,7 @@ Variable: $VERSION (public static)
 
 =cut
 
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 
 =begin NaturalDocs
 

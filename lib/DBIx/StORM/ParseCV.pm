@@ -6,8 +6,7 @@ use strict;
 use warnings;
 
 use B qw(class ppname main_start main_root main_cv cstring svref_2object
-         SVf_IOK SVf_NOK SVf_POK SVf_IVisUV SVf_FAKE OPf_KIDS OPf_SPECIAL
-         CVf_ANON);
+         SVf_IOK SVf_NOK SVf_POK SVf_IVisUV OPf_KIDS OPf_SPECIAL);
 use Carp;
 use XML::XPath;
 use XML::XPath::Node::Element;
@@ -173,13 +172,16 @@ sub _build_tree {
 	}
 }
 
-
 our %OPCODE_ATTRIBUTES = (
 
 gv => {
 	name => sub {
 		my ($op, $cv) = @_;
-		return (($cv->PADLIST->ARRAY)[1]->ARRAY)[$op->padix]->SAFENAME;
+		if ($op->isa("B::SVOP")) {
+			return $op->gv->SAFENAME;
+		} else {
+			return (($cv->PADLIST->ARRAY)[1]->ARRAY)[$op->padix]->SAFENAME;
+		}
 	}
 },
 const => {
