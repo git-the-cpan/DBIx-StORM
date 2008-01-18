@@ -61,7 +61,25 @@ sub b_to_item {
 	elsif ($val->FLAGS & SVf_IOK) { push @$toreturn, $val->int_value; }
 	elsif ($val->FLAGS & SVf_NOK) { push @$toreturn, $val->NV; }
 	elsif ($val->FLAGS & SVf_POK) { push @$toreturn, $val->PV; }
-	elsif ($val->isa("B::RV")) { push @$toreturn, $val->RV; }
+	elsif ($val->isa("B::RV")) {
+		my $thingy = $val->RV;
+		my $handled = 0;
+		if (ref $thingy and $thingy->isa("B::PVMG")) {
+			eval {
+				my $obj = ${ $val->object_2svref };
+				if ($obj->isa("DBIx::StORM::Record")) {
+					push @$toreturn, $obj;
+					$handled = 1;
+				} else {
+					die("Not a result ($@), abort eval");
+				}
+			};
+		}
+		warn $@ if $@;
+		if (not $handled) {
+			push @$toreturn, $val->RV;
+		}
+	}
 	elsif ($val->isa("B::PVNV")) {
 		# May be a DBIx::StORM thingy
 		eval {

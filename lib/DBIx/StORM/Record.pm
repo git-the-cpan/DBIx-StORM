@@ -26,6 +26,7 @@ use overload '""'     => "_as_string",
              fallback => 1
 ;
 
+use DBIx::StORM::TiedCallback;
 use DBIx::StORM::TiedColumn;
 use DBIx::StORM::TiedRecord;
 
@@ -190,7 +191,9 @@ sub _get_simple_value {
 
 	return undef unless ($field or $raw_field);
 
-        if (defined $$self->{table_mapping}->{$field}) {
+        if (defined $raw_field and defined $$self->{outstanding}->{$raw_field}) {
+		return $$self->{outstanding}->{$raw_field};
+        } elsif (defined $$self->{table_mapping}->{$field}) {
 		return $$self->{content}->[$$self->{table_mapping}->{$field}];
 	} elsif (defined $$self->{table_mapping}->{"VIEW->".$raw_field}) {
 		return $$self->{content}->[
@@ -370,11 +373,24 @@ Returns:
 
 =cut
 
-sub autocommit {
-	my $self = shift;
+sub autocommit : lvalue {
+	my ($self, $newval) = @_;
+
 	$self->_not_invalid;
-	$self->commit;
-	$$self->{commit} = shift;
+	if (defined $newval) {
+		$self->commit;
+		$$self->{commit} = shift;
+	} else {
+		tie my $callback, "DBIx::StORM::TiedCallback",
+			fetch => sub {
+				return $$self->{commit};
+			},
+			store => sub {
+				$self->commit;
+				$$self->{commit} = shift @_;
+			};
+		return $callback;
+	}
 }
 
 sub _not_invalid {
@@ -500,7 +516,11 @@ sub _update_field {
 	my $field = shift;
 	my $newval = shift;
 
-	if (ref $newval and $newval->isa("DBIx::StORM::Record")) {
+	my $newval_is_record = eval {
+		ref $newval and $newval->isa("DBIx::StORM::Record")
+	};
+
+	if ($newval_is_record) {
 		# We need to sniff the foreign keys and work out what the
 		# target value is, as it may not necessarily be the primary
 		# key.

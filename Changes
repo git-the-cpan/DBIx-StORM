@@ -1,5 +1,13 @@
 Revision history for Perl extension DBIx::StORM.
 
+0.05
+	- Re-worked inflation and deflation
+	- Sample DateTime inflater in eg directory
+	- Fixes to test suite, slightly better coverage
+	- Fixed issue where existing table makes tests fail
+	- Fix opcode variation under certain perl versions
+	- Basic LIMIT support
+
 0.04  Tue Oct 09 19:45:00 2007
 	- Better compatibility with perl v5.6.0
 	- Fix for issue with SVOPs on FreeBSD

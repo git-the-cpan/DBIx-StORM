@@ -13,6 +13,10 @@ unless($::storm) {
 my $dbh = $::storm->dbi;
 
 $dbh->{RaiseError} = 1;
+$dbh->do("DROP TABLE IF EXISTS variety")
+	or die($dbh->dbi->errstr());
+$dbh->do("DROP TABLE IF EXISTS fruit")
+	or die($dbh->dbi->errstr());
 $dbh->do("CREATE TABLE fruit (id INT, name VARCHAR(10))")
 	or die($dbh->dbi->errstr());
 $dbh->do("CREATE TABLE variety (name INT, fruit INT)")
@@ -35,3 +39,5 @@ sub pulldown {
 	$dbh->do("DROP TABLE fruit");
 	$dbh->do("DROP TABLE variety");
 }
+
+1;

@@ -283,13 +283,44 @@ Returns:
 
 =cut
 sub lookup {
-	my $self = shift;
-	my $field = shift;
+	my ($self, $field) = @_;
 
+	# We can optimise this to do a one-row limit with some
+
+	# This could do with a tidy-up to avoid duplicating code
+
+	my ($sth, $table_mapping) = $self->_get_sth({ limit => 1 });
+
+	my $row = $sth->fetchrow_arrayref;
+
+	# No result?
+	return unless $row;
+
+	if (not $table_mapping) {
+		$table_mapping = $self->_table->_storm->_sqldriver->build_table_mapping($self->_table, $sth);
+	}
+
+	# If the connection has an inflation callback, call it now
+	if (my @i = $self->_table->_storm->_inflaters) {
+		foreach(@i) {
+			$row = $_->inflate($self->_table->_storm, $row, $sth, $table_mapping);
+		}
+	}
+
+	# And actually make the result
+	my $result = $self->{last_result} = DBIx::StORM::Record->_new({
+		table          => $self->_table,
+		content        => $row,
+		base_reference => $self->_table->name(),
+		resultset      => $self,
+		table_mapping  => $table_mapping
+	});
+        
 	if ($field) {
-		my $first = $self->[0];
-		return defined($first) ? $first->_get($field) : undef;
-	} else { return $self->[0]; }
+		return $result->_get($field);
+	} else {
+		return $result;
+	}
 }
 
 =begin NaturalDocs
@@ -330,8 +361,13 @@ Returns:
 sub _recommended_columns {
 	my $self = shift;
 	my $cols = $recommended_columns->{$self->_filter_id()};
-	DBIx::StORM->_debug(3, "recommended: " , join(", ", keys%$cols));
-	return $cols ? [ keys(%$cols) ] : undef;
+	if ($cols) {
+		DBIx::StORM->_debug(3, "recommended: " , join(", ", keys%$cols), "\n");
+		return [ keys(%$cols) ];
+	} else {
+		DBIx::StORM->_debug(3, "No recommended columns\n");
+		return undef;
+	}
 }
 
 =begin NaturalDocs
@@ -462,10 +498,12 @@ Returns:
 
 =cut
 sub _get_sth {
-        my $self = shift;
+	my $self = shift;
+	my $extras = shift || { };
 
 	# We can compile this filter, so let's go
 	return $self->_storm->_sqldriver->do_query({
+		%$extras,
 	        required_columns    => $self->{required_columns},
 	        recommended_columns => $self->{recommended_columns},
 	        complete            =>

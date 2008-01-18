@@ -454,7 +454,7 @@ sub _rebuild_record {
 	# Inflate the row using the connection's inflater if specified
 	if (my @i = $self->_storm->_inflaters) {
 		foreach(@i) {
-			$row = $_->inflate($row, $sth, $table_mapping);
+			$row = $_->inflate($self->_storm, $row, $sth, $table_mapping);
 		}
 	}
 

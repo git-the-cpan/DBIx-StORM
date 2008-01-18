@@ -20,6 +20,8 @@ unless($dbh) {
 
 $dbh->dbi->{RaiseError} = 1;
 # Set up environment
+$dbh->dbi->do("DROP TABLE IF EXISTS fruit")
+	or die($dbh->dbi->errstr());
 $dbh->dbi->do("CREATE TABLE fruit (dKey INT, dVal VARCHAR(10))")
 	or die($dbh->dbi->errstr());
 

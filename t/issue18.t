@@ -12,7 +12,7 @@ $DBIx::StORM::DEBUG = 0; # Quiet, please!
 
 use FindBin;
 use lib $FindBin::Bin;
-do "table_setup_generic.pl" or die $!;
+do "table_setup_generic.pl" or die $@;
 die $@ if $@;
 
 package Fruit;

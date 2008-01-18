@@ -78,7 +78,7 @@ sub FETCH {
 	# If the connection has an inflation callback, call it now
 	if (my @i = $self->{table}->_storm->_inflaters) {
 		foreach(@i) {
-			$row = $_->inflate($row, $self->{sth},
+			$row = $_->inflate($self->{table}->_storm, $row, $self->{sth},
 				$self->{table_mapping});
 		}
 	}

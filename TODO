@@ -1,0 +1,26 @@
+ToDo for DBIx::StORM
+--------------------
+
+I've been asked what the major areas of work are to get StORM ready for a v0.9
+release. They include:
+
+ - Reworked caching. The information on subroutine compliation, PK/FK lookup
+   and similar is well-suited to caching and should be. Preferred column
+   caching also needs work.
+
+ - Support for pure-perl subroutines. There are hooks into the code, but
+   they're not completed.
+
+ - The path lookup with arrow operators needs to be replaced with array refs
+   for binary safety.
+
+ - Better division between the code and the SQLDriver.
+
+ - Better implementation of the fake result array, so you can look forwards
+   and backwards.
+
+ - Overhaul of the class module.
+
+ - Support for GROUP BY.
+
+ - Ideally, better error handling and better test suite

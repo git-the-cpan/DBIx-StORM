@@ -10,6 +10,14 @@ use XML::XPath::Node::Element;
 use Carp;
 
 our $WHERE = {
+        '//b:not[b:postinc/b:helem[r:column]/b:padhv]' => sub {
+                my ($node, $op, $settings) = @_;
+                my $new = XML::XPath::Node::Element->new("distinct", "r");
+                $new->appendChild(($node->findnodes('b:postinc/b:helem/r:column'))[0]);
+                my $padhv = ($node->findnodes('b:postinc/b:helem/b:padhv'))[0];
+                $new->setAttribute("name", $padhv->getAttribute("name"));
+                $settings->{replaceNode}->($node, $new);
+        },
 	'//b:defined' => sub {
 		my ($node, $op, $settings) = @_;
 		my $new = XML::XPath::Node::Element->new("postOp", "r");
@@ -538,16 +546,25 @@ sub do_insert {
 	my $content = $params{content};
 	my $table   = $params{table};
 
+	my @mapping =   keys   %$content;
+	my $values  = [ values %$content ];
+	# If we have a deflater, let it munge @values as desired
+	if (my @deflaters = $table->_storm->_inflaters) {
+		foreach(@deflaters) {
+			$values = $_->deflate($table->_storm, $values, \@mapping);
+		}
+	}
+
 	my $query = "INSERT INTO " . $table->name . " (";
-	$query .= join(", ", map { s/.*->//; $_ } keys %$content);
+	$query .= join(", ", map { s/.*->//; $_ } @mapping);
 	$query .= ") VALUES (";
-	$query .= join(", ", map { "?" } values %$content);
+	$query .= join(", ", map { "?" } @$values);
 	$query .= ")";
 
 	DBIx::StORM->_debug(2, "exec query: $query\n");
-	DBIx::StORM->_debug(2, "bindings  : ". join(",", values %$content). "\n");
+	DBIx::StORM->_debug(2, "bindings  : ". join(",", @$values). "\n");
 
-	defined($table->_storm->dbi->do($query, { }, values %$content))
+	defined($table->_storm->dbi->do($query, { }, @$values))
 	or return;
 
 	return $self->_last_insert_id($table);
@@ -607,7 +624,7 @@ sub do_query {
 			if (my @deflaters = $params->{table}->_storm->_inflaters) {
 				my @tweaked_fragments = map { $params->{table}->name . "->$_" } @fragments;
 				foreach(@deflaters) {
-					@values = $_->deflate(\@values, \@tweaked_fragments);
+					@values = $_->deflate($params->{table}->_storm, \@values, \@tweaked_fragments);
 				}
 			}
 
@@ -663,7 +680,7 @@ sub do_query {
 		if (${ $table->{table_clause} } eq $table->{table_name} . " AS t1") {
 			$table_clause = $table->{table_name};
 			# And strip off the prefix from columns
-			s/^t1\.// while ((undef, $_) = each %$columns);
+			while (my($k) = each %$columns) { $columns->{$k} =~ s/^t1\.// };
 		}
 	}
 
@@ -690,8 +707,8 @@ sub do_query {
 
 	}
 
-	if ($params->{wheres}) {
-		$query .= " WHERE ";
+	if ($params->{wheres} and @{ $params->{wheres} }) {
+		$query .= " WHERE";
 		my $first_where = 1;
 		my $one_where = (scalar(@{ $params->{wheres} }) == 1);
 		foreach my $doc (@{ $params->{wheres} }) {
@@ -729,6 +746,8 @@ sub do_query {
 		} @{ $params->{sorts} });
 		die("Can't handle sort statement: $abort") if $abort;
 	}
+
+	$query = $self->_final_fixup($params, $query);
 
 	$self->_prepare_bind_params($params->{verb}, $table_mapping,
 		\@bind_params);
@@ -893,6 +912,11 @@ sub _prepare_bind_params {
 
 		die(sprintf('Column %s uses object %s', $reverse_mapping->[$i], overload::StrVal($params->[$i])));
 	}
+}
+
+sub _final_fixup {
+	my ($self, $params, $query) = @_;
+	return $query;
 }
 
 1;

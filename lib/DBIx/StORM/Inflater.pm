@@ -45,6 +45,7 @@ Method: inflate (public instance)
 
 Parameters:
 
+  Object $storm - The DBIx::StORM object this query came from
   ArrayRef $values - The values fetched from the database
   Object $sth - The DBI statement handle for the row fetched
   ArrayRef $table_mapping - Table information as described above
@@ -58,7 +59,7 @@ Returns:
 =cut
 
 sub inflate {
-	my ($self, $values, $sth, $table_mapping) = @_;
+	my ($self, $storm, $values, $sth, $table_mapping) = @_;
 	return $values;
 }
 
@@ -70,6 +71,7 @@ Method: deflate (public instance)
 
 Parameters:
 
+  Object $storm - The DBIx::StORM object this query came from
   ArrayRef $values - The array of values to be inserted, as described in the
                      documentation for insert.
   ArrayRef $table_mapping - A table mapping of columns, as described in the
@@ -86,7 +88,7 @@ Returns:
 =cut
 
 sub deflate {
-	my ($self, $values, $table_mapping) = @_;
+	my ($self, $storm, $values, $table_mapping) = @_;
 	return $values;
 }
 

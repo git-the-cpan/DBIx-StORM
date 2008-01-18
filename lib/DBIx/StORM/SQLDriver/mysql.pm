@@ -64,4 +64,15 @@ sub _fetch_foreign_keys {
 	return %toreturn;
 }
 
+sub _final_fixup {
+        my ($self, $params, $query) = @_;
+
+	# Is it a select with limit?
+	if (not $params->{verb} and $params->{limit}) {
+		$query .= " LIMIT " . $params->{limit};
+	}
+
+        return $query;
+}
+
 1;
