@@ -62,6 +62,11 @@ sub parse {
 		}
 	}
 
+	if ($xpath->findnodes('/b:leavesub')) {
+		# We didn't manage to fully compile it
+		return undef;
+	}
+
 	return [ $document, $xpath ];
 }
 

@@ -60,7 +60,18 @@ Returns:
 
 sub FETCH {
 	my ($self, $index) = @_;
-	return $self->{storm}->get_table($index);
+
+	# Set up the table list of needbe
+	if (not $self->{table_list}) {
+		$self->FIRSTKEY;
+	}
+
+	if ($self->{table_list}->{$index}) {
+		# Skip the table check
+		return $self->{storm}->get($index, 1);
+	} else {
+		return $self->{storm}->get($index);
+	}
 }
 
 =begin NaturalDocs
@@ -83,8 +94,20 @@ Returns:
 
 sub EXISTS {
 	my ($self, $index) = @_;
-	return $self->{storm}->_sqldriver()->table_exists($self->{storm}->dbi,
-		$index);
+
+	# Set up the table list of needbe
+	if (not $self->{table_list}) {
+		$self->FIRSTKEY;
+	}
+
+	if ($self->{table_list}->{$index}) {
+		# Table exists in table list
+		return 1;
+	} else {
+		return $self->{storm}->_sqldriver()->table_exists(
+			$self->{storm}->dbi, $index
+		);
+	}
 }
 
 =begin NaturalDocs
@@ -110,14 +133,16 @@ Returns:
 
 sub FIRSTKEY {
 	my $self = shift;
-	my %tables;
-	foreach my $table (
-		$self->{storm}->_sqldriver()->table_list($self->{storm}->dbi)
-	) {
-		$tables{$table}++
+	$self->{table_list} = $self->{storm}->_sqldriver()->table_list(
+		$self->{storm}->dbi
+	);
+
+	# Only return a value if not being called in void context
+	if (defined wantarray) {
+		# Reset iterator
+		keys %{ $self->{table_list} };
+		return $self->NEXTKEY;
 	}
-	$self->{table_list} = \%tables;
-	return $self->NEXTKEY;
 }
 
 =begin NaturalDocs

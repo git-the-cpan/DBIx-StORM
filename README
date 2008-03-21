@@ -1,4 +1,4 @@
-DBIx-StORM version 0.05
+DBIx-StORM version 0.06
 =======================
 
 An embryonic, but advanced database-driven Perl ORM with support for
@@ -30,11 +30,12 @@ This module requires these other modules and libraries:
 
   Perl v5.6.0 or later
   DBI
+  Scalar::Util
   XML::XPath
 
 COPYRIGHT AND LICENCE
 
-Copyright (C) 2006-2007 by Luke Ross
+Copyright (C) 2006-2008 by Luke Ross
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself, either Perl version 5.6.0 or,

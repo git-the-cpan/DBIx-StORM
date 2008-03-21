@@ -5,7 +5,7 @@
 
 use Test;
 my $tests;
-BEGIN { $tests = 8; plan tests => $tests };
+BEGIN { $tests = 11; plan tests => $tests };
 
 use DBIx::StORM;
 $DBIx::StORM::DEBUG = 0; # Quiet, please!
@@ -36,6 +36,7 @@ use base "DBIx::StORM::Class";
 __PACKAGE__->config(
 	connection => ["dbi:DBM:"],
 	table      => "fruit",
+	hints      => [ primary_key => "fruit->dKey" ]
 );
 
 sub _init {
@@ -80,8 +81,15 @@ my $result;
 ok($results and scalar(@$results) == 1 and $result = $results->[0] and
    $result->{dKey} eq $b and $result->{dVal} eq $g);
 
+# Lets try some serialise
+my $string = $result->serialise;
+ok($string eq $b);
+$result = Fruit->unserialise($string);
+ok($result and $result->{dKey} eq $b);
+$result = Fruit->unserialise("blort");
+ok(not defined $result);
+
 # Cleanup
 $dbh->dbi->do("DROP TABLE fruit");
 
 }
-

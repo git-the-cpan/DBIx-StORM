@@ -1,7 +1,10 @@
 #!/usr/bin/perl
 
 use strict;
-use warnings;
+#use warnings;
+
+# These tests only apply to perl >= 5.8.0
+# as it needs B::object_2svref
 
 use Test;
 my $tests;
@@ -26,11 +29,13 @@ my $mutant = $storm->{variety}->insert(sub {
 	$_->{fruit} = $apple;
 });
 
-ok(defined($mutant) and $mutant->{fruit}->{name} eq "apple");
+my $skip_test = ($] < 5.008);
+
+skip($skip_test, sub { defined($mutant) and $mutant->{fruit} and $mutant->{fruit}->{name} eq "apple" });
 
 $mutant->{fruit} = $peach;
 
-ok(defined($mutant) and $mutant->{fruit}->{name} eq "peach");
+skip($skip_test, sub { defined($mutant) and $mutant->{fruit} and $mutant->{fruit}->{name} eq "peach" });
 
 $storm->{variety}->grep(sub { $_->{fruit} == 3 })->update(sub {
 	$_->{fruit} = $orange;
@@ -40,6 +45,6 @@ $mutant = $storm->{variety}->grep(sub {
 	$_->{name} eq "SuperFlurby"
 })->lookup;
 
-ok(defined($mutant) and $mutant->{fruit}->{name} eq "orange");
+skip($skip_test, sub { defined($mutant) and $mutant->{fruit} and $mutant->{fruit}->{name} eq "orange" });
 
 main::pulldown();

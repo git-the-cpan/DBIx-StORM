@@ -433,6 +433,9 @@ sub _rebuild_record {
 
 	my($wheres, $pk) = $self->_build_result_identity($record);
 
+	# If there's no PK, we can't rebuild.
+	return unless @$pk;
+
 	# OK, now run the query and get a new table mapping and statement
 	# handle
 	my ($sth, $table_mapping) = $self->_storm->_sqldriver->do_query({
@@ -446,7 +449,7 @@ sub _rebuild_record {
 
 	# We should have got a row - panic if not!
 	my $row = [ $sth->fetchrow_array ];
-	unless($row) {
+	unless($sth->rows and @$row) {
 		$self->_storm->dbi->set_err(1, "No row to rebuild record from - is the primary key properly defined?");
 		return;
 	}
@@ -676,7 +679,7 @@ Luke Ross, E<lt>luke@lukeross.nameE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2006-2007 by Luke Ross
+Copyright (C) 2006-2008 by Luke Ross
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself, either Perl version 5.6.0 or,

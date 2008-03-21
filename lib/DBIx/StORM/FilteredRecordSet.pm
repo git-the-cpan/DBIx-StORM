@@ -37,6 +37,13 @@ sub _new {
 
 	bless $self => $class;
 
+	# If we've been given a glob of SQL, use it directly
+	if ($self->{pre_parsed}) {
+		push @{ $self->{wheres} }, $filter;
+		delete $self->{pre_parsed};
+		return $self;
+	}
+
 	my $parsed = $self->_do_parse($filter, "WHERE", binding => 1);
 	if ($parsed) {
 		# _build_where_clause() has poked the wheres into

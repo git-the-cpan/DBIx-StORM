@@ -16,8 +16,7 @@ access point is the class method lexmap().
 use strict;
 use warnings;
 
-use B qw(svref_2object comppadlist class SVf_IOK SVf_NOK SVf_POK);
-use B::Concise();
+use B qw(svref_2object comppadlist class SVf_IOK SVf_NOK SVf_POK cstring);
 
 =begin NaturalDocs
 
@@ -63,19 +62,19 @@ sub b_to_item {
 	elsif ($val->FLAGS & SVf_POK) { push @$toreturn, $val->PV; }
 	elsif ($val->isa("B::RV")) {
 		my $thingy = $val->RV;
-		my $handled = 0;
-		if (ref $thingy and $thingy->isa("B::PVMG")) {
+		my $handled = ($] < 5.008); # don't attempt unless Perl >= v5.8.0
+		if (not $handled and ref $thingy and $thingy->isa("B::PVMG")) {
 			eval {
 				my $obj = ${ $val->object_2svref };
 				if ($obj->isa("DBIx::StORM::Record")) {
 					push @$toreturn, $obj;
 					$handled = 1;
 				} else {
-					die("Not a result ($@), abort eval");
+					die("Not a result, abort eval");
 				}
 			};
 		}
-		warn $@ if $@;
+		warn $@ if ($@ and $@ !~ m/Not a result/);
 		if (not $handled) {
 			push @$toreturn, $val->RV;
 		}
@@ -129,21 +128,18 @@ sub lexmap {
 	my ($namesi, $valsi) = svref_2object($coderef)->PADLIST->ARRAY;
 
 	# Un-B the names and values
-	my ($names, $vals) =
-		([ map { my $info = { };
-			B::Concise::concise_sv($_, $info); $info }
-			$namesi->ARRAY ], [ $valsi->ARRAY ]);
+	my @names = $namesi->ARRAY;
 
 	# Turn the list into a hash
-	for(my $i = 1; $i < @$names; $i++) {
+	for(my $i = 1; $i < @names; $i++) {
 		# The name should be a string (PV)
-		if ($names->[$i]->{svclass} =~ m/^PV/) {
+		if (class($names[$i]) =~ m/^PV/ and $names[$i]->FLAGS & SVf_POK) {
 			# Extract the variable name
-			my $name = ($names->[$i]->{svval} =~ m/"(.*)"/)[0]
+			my $name = (cstring($names[$i]->PV) =~ m/"(.*)"/)[0]
 				or return;
 
 			# Now get the value
-			my $new_val = $class->b_to_item($vals->[$i]);
+			my $new_val = $class->b_to_item(($valsi->ARRAY)[$i]);
 			if ($new_val) { $map->{$name} = $new_val->[0]; }
 			else { return; }
 		}

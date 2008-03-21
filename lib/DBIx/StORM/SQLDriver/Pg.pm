@@ -12,11 +12,9 @@ sub _last_insert_id {
 
 	my $self = shift;
 
-	return $self->SUPER::_last_insert_id(@_) if ($DBD::Pg::VERSION >= 1.40);
-
 	my $table = shift;
 
-	my $oid = $table->_storm->_dbh->selectall_arrayref(
+	my $oid = $table->_storm->dbi->selectall_arrayref(
 	        "SELECT c.oid FROM pg_class c WHERE relname = ?",
 	        { }, $table->name);
 	$oid = $oid->[0]->[0];
@@ -30,10 +28,10 @@ AND d.adsrc ~ '^nextval'
 END
 	#  attname | indisprimary |                    def
 	# id      | t            | nextval('blog_comments_id_seq'::regclass)
-	my $sth = $table->_storm->_dbh->prepare($sql);
+	my $sth = $table->_storm->dbi->prepare($sql);
 	$sth->execute();
 
-	my $sth2 = $table->_storm->_dbh->prepare("SELECT currval(?)");
+	my $sth2 = $table->_storm->dbi->prepare("SELECT currval(?)");
 
 	my $pk_map = { };
 	while (my $row = $sth->fetchrow_arrayref()) {

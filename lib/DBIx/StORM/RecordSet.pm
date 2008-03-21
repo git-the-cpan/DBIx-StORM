@@ -128,7 +128,8 @@ sub _parse {
 	my $parsed = DBIx::StORM::ParseCV->parse($filter,
 		$self->_storm->_sqldriver->opcode_map($mode));
 
-	DBIx::StORM->_debug(2, "Parsing $filter in $mode: ", $parsed->[0]->toString);
+	DBIx::StORM->_debug(2, "Parsing $filter in $mode: ",
+		$parsed ? $parsed->[0]->toString : "(undefined)");
 	return $parsed;
 }
 
@@ -240,7 +241,10 @@ Returns:
 
   An object of type <DBIx::StORM::OrderedRecordSet>
 
+=end NaturalDocs
+
 =cut
+
 sub view {
 	my $self = shift;
 	my $new_views = { @_ };
@@ -281,11 +285,30 @@ Returns:
   An object of type <DBIx::StORM::Record> if no field is supplied or the
   field is a foreign key, otherwise a simple scalar
 
+=end NaturalDocs
+
 =cut
+
 sub lookup {
 	my ($self, $field) = @_;
 
+	if (($self->{perl_wheres} and @{ $self->{perl_wheres} }) or
+	    ($self->{perl_sorts}  and @{ $self->{perl_sorts}  })) {
+		# We can't limit this to one row, as maybe the Perl
+		# filters will remove results.
+
+		my $record = $self->[0];
+		return unless $record;
+
+		if ($field) {
+			return $record->get($field);
+		} else {
+			return $record;
+		}
+	}
+
 	# We can optimise this to do a one-row limit with some
+	# databases
 
 	# This could do with a tidy-up to avoid duplicating code
 
@@ -317,7 +340,7 @@ sub lookup {
 	});
         
 	if ($field) {
-		return $result->_get($field);
+		return $result->get($field);
 	} else {
 		return $result;
 	}
@@ -337,7 +360,10 @@ Returns:
 
   String - The filter ID
 
+=end NaturalDocs
+
 =cut
+
 sub _filter_id {
 	return shift()->{filter_id};
 }
@@ -357,7 +383,10 @@ Returns:
   An array reference of strings representing the path of the
   recommended columns
 
+=end NaturalDocs
+
 =cut
+
 sub _recommended_columns {
 	my $self = shift;
 	my $cols = $recommended_columns->{$self->_filter_id()};
@@ -384,7 +413,10 @@ Returns:
 
   Nothing
 
+=end NaturalDocs
+
 =cut
+
 sub _recommend_column {
 	my $self = shift;
 	my $column = shift;
@@ -407,7 +439,10 @@ Returns:
 
   Object - An object of type <DBIx::StORM::Table>
 
+=end NaturalDocs
+
 =cut
+
 sub _table {
 	return shift()->{table};
 }
@@ -429,7 +464,10 @@ Returns:
 
   ArrayRef - An array reference tied to class <DBIx::StORM::RecordArray>
 
+=end NaturalDocs
+
 =cut
+
 sub _as_array {
 	my $self = shift;
 
@@ -471,14 +509,55 @@ Returns:
 
   ArrayRef - An array of <DBIx::StORM::Record> Objects
 
+=end NaturalDocs
+
 =cut
+
 sub array {
 	my $self = shift;
 
 	my ($sth, $table_mapping) = $self->_get_sth();
 
 	my @result;
-	die("Not implemented");
+
+	while(my $row = $sth->fetchrow_arrayref) {
+		next unless @$row;
+
+		$row = [ @$row ]; # Copy
+
+		$table_mapping ||=
+			$self->{table}->_storm->_sqldriver->build_table_mapping($self->{table}, $sth);
+
+		# If the connection has an inflation callback, call it now
+		if (my @i = $self->{table}->_storm->_inflaters) {
+			foreach(@i) {
+				$row = $_->inflate($self->{table}->_storm, $row, $sth,
+					$table_mapping);
+			}
+		}
+
+		# And actually make the result
+		push @result, DBIx::StORM::Record->_new({
+			table          => $self->{table},
+			content        => $row,
+			base_reference => $self->{table}->name,
+			resultset      => $self,
+			table_mapping  => $table_mapping
+		});
+	}
+
+	# Now apply the filters
+	$self->{perl_wheres} ||= [ ];
+	foreach my $where (@{ $self->{perl_wheres} }) {
+		@result = grep { $where->() } @result;
+	}
+
+	$self->{perl_sorts} ||= [ ];
+	foreach my $sort (@{ $self->{perl_sorts} }) {
+		@result = sort $sort @result;
+	}
+
+	return \@result;
 }
 
 =begin NaturalDocs
@@ -496,7 +575,10 @@ Returns:
   Object $sth - A DBI statement handle from which query results can be fetched
   HashRef $table_mapping - A mapping of column references to result indices
 
+=end NaturalDocs
+
 =cut
+
 sub _get_sth {
 	my $self = shift;
 	my $extras = shift || { };
@@ -529,7 +611,10 @@ Returns:
 
   Object - A <DBIx::StORM> object
 
+=end NaturalDocs
+
 =cut
+
 sub _storm {
 	my $self = shift;
 	return $self->{storm};

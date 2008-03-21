@@ -8,9 +8,6 @@ release. They include:
    and similar is well-suited to caching and should be. Preferred column
    caching also needs work.
 
- - Support for pure-perl subroutines. There are hooks into the code, but
-   they're not completed.
-
  - The path lookup with arrow operators needs to be replaced with array refs
    for binary safety.
 

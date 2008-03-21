@@ -14,7 +14,7 @@ sub TIEARRAY {
 	my $params = shift;
 	my $self = {
 		%$params,
-		pointer => -1,
+		pointer => 0,
 		last_result => undef
 	};
 
@@ -51,23 +51,24 @@ sub FETCH {
 	# it), so the veneer is only supposed to permit simple in-order
 	# iteration. It turns out you need hold on to the previous result
 	# if you want foreach to work.
-	if ($self->{pointer} != $index and $self->{pointer} + 1 != $index) {
+	if ($self->{pointer} - 1 != $index and $self->{pointer} != $index) {
 		die("Out of order RecordArray access not permitted");
 	}
 
 	# If foreach wants the previous result, we can skip a whole load
 	# of effort as we cached it.
-	if ($self->{pointer} == $index) { return $self->{last_result}; }
+	if ($self->{pointer} - 1 == $index) { return $self->{last_result}; }
 
 	# Increment our expectation of the next index we're expecting
 	$self->{pointer}++;
 
 	# Get the data for the row and clone it so it can be modified.
+	return undef if ($self->{sth}->rows == 0);
 	my $row = [ $self->{sth}->fetchrow_array ];
 
 	# We should have got a row - otherwise we've run off the end of the
 	# "array"
-	if (not $row) { return undef; }
+	if (not @$row) { return undef; }
 
 	# We may need to build a table mapping if this is the first result in
 	# the RecordSet

@@ -169,7 +169,8 @@ sub __dbix_storm_make_connect {
 	if ($config->{hints}) {
 		my @hints = @{ $config->{hints} };
 		while(@hints) {
-			$connection->add_hint(pop(@hints) => pop(@hints));
+			$connection->add_hint(shift(@hints) =>
+				shift(@hints));
 		}
 	}
 
@@ -182,8 +183,8 @@ sub __dbix_storm_make_connect {
 	}
 
 	$config->{bless_map} = { };
-	$config->{bless_map}->{$config->{table}} = $package if
-		exists $config->{table};
+	$config->{bless_map}->{$config->{table}} = $package
+		if exists $config->{table};
 	$config->{live_connection} = $connection;
 	return $connection;
 }
@@ -307,13 +308,13 @@ sub serialise {
 
 	# Can we serialise as a primary key?
 	if (defined($$self->{table}) and
-            my $pk = $$self->{table}->primary_key()) {
+            my $pk = $$self->{table}->primary_key) {
 
 		# Our intention is to join together the PK values with commas
 		my @ret;
 		foreach my $p (@$pk) {
 			$p =~ s/^.*->//;
-			my $ret = $self->_get($p);
+			my $ret = $self->get($p);
 			return if not defined $ret;
 			# Escape
 			$ret =~ s/\\/\\\\/;
@@ -350,7 +351,94 @@ Returns:
 
 sub unserialise {
 	my ($package, $string) = @_;
-	die("Not yet implemented");
+
+	# We want to split on commas, but only those where there are zero
+	# or an even number of backslashes preceding it (ie. it isn't
+	# escaped)
+	my @in_process = split /(,|\\)/, $string;
+
+	my @pk_bits;
+	my $current_token = "";
+	for(my $l = 0; $l <= $#in_process; ++$l) {
+		local $_ = $in_process[$l];
+		if ($_ eq ",") {
+			push @pk_bits, $current_token;
+			$current_token = "";
+		} elsif ($_ eq "\\") {
+			my $next_token = $in_process[$l+1];
+			next unless defined $next_token;
+			if ($next_token eq "\\") {
+				$current_token .= "\\";
+				# Skip next token
+				++$l;
+			} elsif ($next_token eq ",") {
+				$current_token .= ",";
+				# Skip next token
+				++$l;
+			}
+		} else {
+			$current_token .= $_;
+		}
+	}
+	push @pk_bits, $current_token;
+
+	# Good, @pk_bits should specify the primary key values of the field
+	# that we want to select. Now we just need to ask the database for
+	# it.
+
+	# Which are the PK columns? Copy to avoid damaging it
+	my $table = $package->__dbix_storm_make_connect->{
+		$package->__dbix_storm_get_config->{table}
+	};
+	my $pk = $table->primary_key;
+	$pk = [ @$pk ];
+
+	# Build the where clause that matches the primary key
+	my @where;
+	foreach(@$pk) {
+		my $sql_col = $_;
+		$sql_col =~ s/.*->//;
+
+		push @where, [ "$sql_col = ?", shift(@pk_bits) ];
+	}
+
+	# OK, now run the query and get a new table mapping and statement
+	# handle
+	my ($sth, $table_mapping) = $table->_storm->_sqldriver->do_query({
+	        required_columns => [ @$pk ],
+	        recommended_columns => undef,
+	        table => $table,
+	        wheres => \@where,
+		views => undef,
+		record_base_reference => $table->name
+        });
+
+	# We should have got a row - panic if not!
+	return if ($sth->rows == 0);
+	my $row = [ $sth->fetchrow_array ];
+	return unless @$row;
+
+	# At least one DBD returns a row of all undefs if you get zero
+	# results (yuck). We ought to get back some set PK fiekds, so weed
+	# this out.
+	return unless grep { defined } @$row;
+
+	# Inflate the row using the connection's inflater if specified
+	if (my @i = $table->_storm->_inflaters) {
+		foreach(@i) {
+			$row = $_->inflate($table->_storm, $row, $sth,
+				$table_mapping);
+		}
+	}
+
+	# Make the actual record
+	return $package->_new({
+                table          => $table,
+                content        => $row,
+                base_reference => $table->name,
+                resultset      => $table,
+                table_mapping  => $table_mapping
+        });
 }
 
 =begin NaturalDocs
@@ -504,7 +592,7 @@ Luke Ross, E<lt>luke@lukeross.nameE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2006-2007 by Luke Ross
+Copyright (C) 2006-2008 by Luke Ross
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself, either Perl version 5.6.0 or,

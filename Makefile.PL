@@ -14,24 +14,27 @@ sub MY::postamble {
 apidoc:
 	NaturalDocs --input $ip --output HTML $op --project $proj
 
+checkpod:
+	podchecker \$(MAN1PODS) \$(MAN3PODS)
+
 MAKE_FRAG
 	};
 	return $@ ? "" : $_;
 }
 
 WriteMakefile(
-    NAME              => 'DBIx::StORM',
-    VERSION_FROM      => 'lib/DBIx/StORM.pm', # finds $VERSION
-    PREREQ_PM         => {
-         B             => 0,
-        "B::Concise"   => 0,
-         Carp          => 0,
-         constant      => 0,
-         DBI           => 0,
-         FindBin       => 0,
-         overload      => 0,
-        "XML::XPath"   => 0,
-                         },
-    ABSTRACT_FROM     => 'lib/DBIx/StORM.pm', # retrieve abstract from module
-    AUTHOR            => 'Luke Ross <luke@lukeross.name>'
+	NAME          => 'DBIx::StORM',
+	VERSION_FROM  => 'lib/DBIx/StORM.pm', # finds $VERSION
+	PREREQ_PM     => {
+		 B             => 0,
+		 Carp          => 0,
+		 constant      => 0,
+		 DBI           => 0,
+		 FindBin       => 0,
+		 overload      => 0,
+		"Scalar::Util" => 0,
+		"XML::XPath"   => 0,
+	},
+	ABSTRACT_FROM => 'lib/DBIx/StORM.pm', # retrieve from module
+	AUTHOR        => 'Luke Ross <luke@lukeross.name>'
 );

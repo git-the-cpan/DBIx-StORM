@@ -6,7 +6,7 @@ package DBIx::StORM::Record;
 
 Class: DBIx::StORM::Record
 
-An StORM class representing an individual row from the database.
+A StORM class representing an individual row from the database.
 
 This is essentially a wrapper for a result from a DBI statement handle.
 It appears to be a hash reference, where the keys of the hash are
@@ -25,6 +25,8 @@ use overload '""'     => "_as_string",
              'bool'   => "_as_bool",
              fallback => 1
 ;
+
+use Scalar::Util qw(blessed);
 
 use DBIx::StORM::TiedCallback;
 use DBIx::StORM::TiedColumn;
@@ -332,16 +334,19 @@ sub _as_string {
 	$self->_not_invalid();
 
 	# Can we serialise as a primary key?
-	if (defined($$self->{table}) and
-            my $pk = $$self->{table}->primary_key()) {
+	if (defined($$self->{table})
+		and my $pk = $$self->{table}->primary_key()) {
 
 		# Our intention is to join together the PK values with commas
 		my @ret;
 		foreach my $p (@$pk) {
-			my $ret = $self->_get_simple_value($p);
+			my $copy_p = $p;
+			$p =~ s/.*->(.*)/$$self->{base_reference} . "->$1"/e;
+			my $ret = $self->_get_simple_value($p, $1);
 			return overload::StrVal($self) if not defined $ret;
 			push @ret, $ret;
 		}
+		return overload::StrVal($self) unless @ret;
 		return join ",", @ret;
 	}
 
@@ -421,7 +426,7 @@ sub commit {
 		while(my($field,$value) = each %{ $$self->{outstanding} }) {
 			$field =~ s/.*->//;
 			# If a foreign key was set, then flatten it now
-			if (ref $value and $value->isa("DBIx::StORM::Record")) {
+			if (ref $value and blessed $value and $value->isa("DBIx::StORM::Record")) {
 				$value->commit;
 				$value = "" . $value;
 			}
@@ -449,7 +454,7 @@ sub commit {
 
 		# If a foreign key was set, then flatten it now
 		while(my($field,$value) = each %{ $$self->{outstanding} }) {
-			if (ref $value and $value->isa("DBIx::StORM::Record")) {
+			if (ref $value and blessed $value and $value->isa("DBIx::StORM::Record")) {
 				$value->commit;
 				$$self->{outstanding}->{$field} = "" . $value;
 			}
@@ -517,7 +522,7 @@ sub _update_field {
 	my $newval = shift;
 
 	my $newval_is_record = eval {
-		ref $newval and $newval->isa("DBIx::StORM::Record")
+		ref $newval and blessed $newval and $newval->isa("DBIx::StORM::Record")
 	};
 
 	if ($newval_is_record) {
@@ -560,6 +565,65 @@ sub _update_field {
 	}
 }
 
+=begin NaturalDocs
+
+Method: associated (public instance)
+
+  Find Records in another table that have a foreign key that links back
+  to this record.
+
+Parameters:
+
+  String $table - Table to scan for links back to this record
+
+Returns:
+
+  Object - A DBIx::StORM::RecordSet of records with a column that match
+
+=end NaturalDocs
+
+=cut
+
+sub associated {
+	my ($self, $target_name) = @_;
+
+	my $target_table = $$self->{table}->_storm->get($target_name);
+
+	my $fks = $$self->{table}->_storm->_sqldriver->foreign_keys(
+		$target_table
+	);
+
+	my $looking_for = "^" . quotemeta($$self->{table}->name) . "->";
+
+	my @possible_wheres;
+	my @bind_values;
+	while(my($col_from, $col_to) = each %$fks) {
+		if ($col_to =~ s/$looking_for//) {
+			# $copy now contains the column name
+			push @possible_wheres, "$col_from = ?";
+			push @bind_values, $self->{$col_to};
+		}
+	}
+
+	my $rs = DBIx::StORM::FilteredRecordSet->_new({
+                filter           => [
+			join(" OR ", @possible_wheres),
+			@bind_values
+		],
+		pre_parsed       => 1,
+                parent           => $target_table,
+                table            => $target_table,
+                required_columns => [ @{ $target_table->primary_key } ],
+                storm            => $target_table->_storm,
+                wheres           => [ ],
+                sorts            => [ ],
+                views            => { },
+                perl_wheres      => [ ],
+                perl_sorts       => [ ],
+                perl_views       => { }
+        });
+}
+
 1;
 __END__
 
@@ -572,15 +636,16 @@ DBIx::StORM::Record
 A row from the database. You can treat it has a hash reference to access
 the column information.
 
-You should not create a Record directly - either access one from a RecordSet
-(by using array dereferencing) or use the insert() method on the table to add a new row.
+You should not create a Record directly - either access one from a
+RecordSet (by using array dereferencing) or use the insert() method on
+the table to add a new row.
 
 =head2 METHODS
 
 =head3 $instance->get(field)
 
-Look up the value for column I<field> in the row. You can assign to the field
-as well to update the value.
+Look up the value for column I<field> in the row. You can assign to the
+field as well to update the value.
 
 =head3 $instance->{I<field>}
 

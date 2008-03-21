@@ -1,19 +1,23 @@
 #!/usr/bin/perl
 
 package DBIx::StORM;
+
 =begin NaturalDocs
 
 Class: DBIx::StORM
 
-An StORM class representing a database connection.
+A StORM class representing a database connection.
 
 This is essentially a wrapper for a DBI connection. This object can be
 dereferenced as a hash, with the keys of the hash being the table names
-present in this database and the values being DBIx::StORM::Table objects.
+present in this database and the values being DBIx::StORM::Table
+objects.
 
 Any methods not used by this class will be passed to the underlying DBI
 connection object, so you can call most DBI methods directly on this
 object.
+
+=end NaturalDocs
 
 =cut
 
@@ -21,14 +25,10 @@ use 5.006;
 use strict;
 use warnings;
 
-use constant DBIH      => 0;
-use constant SQLDRIVER => 1;
-use constant TIED      => 2;
-use constant INFLATE   => 3;
+use overload '%{}'    => "_as_tied_hash",
+             fallback => 1;
 
-use overload '%{}'     => "_as_tied_hash",
-             fallback  => 1;
-
+use Carp;
 use DBI;
 
 use DBIx::StORM::SQLDriver;
@@ -45,7 +45,7 @@ Variable: $VERSION (public static)
 
 =cut
 
-our $VERSION = '0.05';
+our $VERSION = '0.06';
 
 =begin NaturalDocs
 
@@ -89,33 +89,35 @@ Returns:
 sub connect {
 	my $class = shift;
 
-	# $self is an array with constant keys. It is not a hash because
-	# it is difficult to use a hash object in combination with overloaded
-	# hash dereferencing.
-	my $self = [ ];
+	# $self is a reference to a reference to a hash. It is not a
+	# hash reference because it is difficult to use a hash object
+	# in combination with overloaded hash dereferencing.
+	my $self = \{ };
 
 	# Set up the DBI connection
 	my $dbh = DBI->connect(@_);
 	return unless ref $dbh;
-	$self->[DBIH] = $dbh;
+	$$self->{dbih} = $dbh;
 
 	# Now create the DB compatibility object. This is used to build
 	# queries in a database-specific fashion. The object class is
-	# chosen based on the DBI driver name. If a specific driver can't
-	# be found then a generic driver is instantiated instead.
+	# chosen based on the DBI driver name. If a specific driver
+	# can't be found then a generic driver is instantiated instead.
 	my $drivername = $dbh->{Driver}->{Name};
-	$self->[SQLDRIVER] = eval "use DBIx::StORM::SQLDriver::$drivername;
-		DBIx::StORM::SQLDriver::$drivername->new();";
+	$$self->{sqldriver} = eval "
+		use DBIx::StORM::SQLDriver::$drivername;
+		DBIx::StORM::SQLDriver::$drivername->new();
+	";
 	if ($@) {
 		unless ($@ =~ m/Can't locate/) {
 			$dbh->set_err(1,$@);
 			return;
 		}
 
-		$class->_debug(1,
-			"Couldn't find a suitable SQL driver for $drivername\n"
+		$class->_debug(1, "Couldn't find a suitable SQL " .
+			"driver for $drivername\n"
 		);
-		$self->[SQLDRIVER] = DBIx::StORM::SQLDriver->new();
+		$$self->{sqldriver} = DBIx::StORM::SQLDriver->new();
 	}
 
 	return bless $self => $class;
@@ -142,7 +144,7 @@ Returns:
 
 sub inflater {
 	my ($self, $inf) = @_;
-	push @{ $self->[INFLATE] }, $inf if
+	push @{ $$self->{inflate} }, $inf if
 		(ref($inf) and $inf->isa("DBIx::StORM::Inflater"));
 }
 
@@ -166,20 +168,20 @@ Returns:
 
 sub _inflaters {
 	my $self = shift;
-	return @{ $self->[INFLATE] } if $self->[INFLATE];
+	return @{ $$self->{inflate} } if $$self->{inflate};
 	return ();
 }
 
 =begin NaturalDocs
 
-Method: get_table (public instance)
+Method: get (public instance)
 
   Fetch a table object using this database connection.
 
 Parameters:
 
   String $table_name - The name of the table to open
-  List @view - Optional specification of view columns
+  Boolean $skip_verify - Whether to skip checking for table existence
 
 Returns:
 
@@ -189,18 +191,18 @@ Returns:
 
 =cut
 
-sub get_table {
-	my ($self, $table_name, @view) = @_;
+sub get {
+	my ($self, $table_name, $skip_verify) = @_;
 
-	# Check that this table is available
-	if (!$self->[SQLDRIVER]->table_exists($self->dbi, $table_name)) {
+	if (not $skip_verify
+		and not $$self->{sqldriver}->table_exists(
+			$self->dbi, $table_name
+		)) {
 		$self->dbi->set_err(1, "No such table: $table_name\n");
 	}
 
 	# Now build the object
-	my $table = DBIx::StORM::Table->_new($self, $table_name);
-	if (@view) { return $table->view(@view); }
-	else       { return $table;              }
+	return DBIx::StORM::Table->_new($self, $table_name);
 }
 
 =begin NaturalDocs
@@ -224,10 +226,9 @@ Returns:
 
 sub _as_tied_hash {
 	my $self = shift;
-	return $self->[TIED] if $self->[TIED];
-	my %tied;
-	tie %tied, "DBIx::StORM::TiedTable", $self;
-	return $self->[TIED] = \%tied;
+	return $$self->{tied} if $$self->{tied};
+	tie my %tied, "DBIx::StORM::TiedTable", $self;
+	return $$self->{tied} = \%tied;
 }
 
 =begin NaturalDocs
@@ -250,7 +251,7 @@ Returns:
 
 sub dbi {
 	my $self = shift;
-	return $self->[DBIH];
+	return $$self->{dbih};
 }
 
 =begin NaturalDocs
@@ -341,77 +342,7 @@ Returns:
 
 sub _sqldriver {
 	my $self = shift;
-	return $self->[SQLDRIVER];
-}
-
-=begin NaturalDocs
-
-Method: can (static/instance)
-
-  Check to see if you can call a method on this.
-
-Parameters:
-
-  String $method - String containing the name of the method to check exists
-
-Returns:
-
-  SubRef - A subroutine reference, of undef if the method cannot be called
-
-=end NaturalDocs
-
-=cut
-
-sub can {
-	my ($self, $method) = @_;
-
-	{
-		# First check if the method exists in this symbol table
-		no strict "refs";
-		my $symbol = __PACKAGE__ . "::$method";
-		if (exists &{ $symbol }) {
-			return \&{ $symbol };
-		}
-	}
-
-	# Otherwise does it exist in the database handle, as called by
-	# AUTOLOAD?
-	return $self->dbi->can($method);
-}
-
-=begin NaturalDocs
-
-Method: AUTOLOAD (static/instance)
-
-  The AUTOLOAD routine handles the magical method calls. Where methods
-  don't exist in this package we attempt to call the same method on the
-  database handle.
-
-  DESTROY methods are ignored here.
-
-Parameters:
-
-  Variable; see above
-
-Returns:
-
-  Variable; see above
-
-=end NaturalDocs
-
-=cut
-
-sub AUTOLOAD {
-	my $self = shift;
-	my $method = our $AUTOLOAD;
-	$method =~ s/.*:://;
-
-	if ($method eq "DESTROY") {
-		$self->dbi->disconnect() if $self->dbi;
-		return;
-	}
-
-	return $self->dbi->$method(@_) if $self->dbi->can($method);
+	return $$self->{sqldriver};
 }
 
 1;
@@ -453,27 +384,19 @@ or undef on failure.
 
 Retrieve the DBI object underpinning this connection object.
 
-=head3 GET_TABLE
+=head3 GET
 
-  $dbix_StORM->get_table($tablename)
+  $dbix_StORM->get($tablename)
 
 Access a DBIx::StORM::Table object for table $tablename on this connection.
 Returns undef on failure or if no such table exists.
 
 =head3 ADD_HINT
 
-  $dbix_StORM->addhint($type => $hint [, $type => $hint ... ])
+  $dbix_StORM->add_hint($type => $hint [, $type => $hint ... ])
 
 Add a hint to the StORM's metadata. This is typically used to add foreign key
 information for database systems that don't natively support them.
-
-=head3 I<method>
-
-  $dbix_StORM->I<method>([ arg, ... ])
-
-Calls the method on the underlying DBI object.
-
-Equivilent to $instance->dbi->I<method>
 
 =head2 VARIABLES
 
@@ -499,7 +422,7 @@ Luke Ross, E<lt>luke@lukeross.nameE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2006-2007 by Luke Ross
+Copyright (C) 2006-2008 by Luke Ross
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself, either Perl version 5.6.0 or,

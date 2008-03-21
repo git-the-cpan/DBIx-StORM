@@ -27,8 +27,13 @@ doc/apidoc/index/General2.html
 doc/apidoc/index/Variables.html
 doc/apidoc/javascript/main.js
 doc/apidoc/styles/main.css
+eg/catalyst/StORM.pm
+eg/catalyst/StORMClass.pm
 eg/inflater/datetime.pl
 eg/inflater/DateTime.pm
+eg/inflater/storable.pl
+eg/inflater/Storable.pm
+eg/use/walk_database.pl
 lib/DBIx/StORM.pm
 lib/DBIx/StORM/Class.pm
 lib/DBIx/StORM/FilteredRecordSet.pm
@@ -52,15 +57,17 @@ lib/DBIx/StORM/Tutorial.pod
 Makefile.PL
 MANIFEST
 README
-TODO
 t/01-dbi.t
 t/02-mysql.t
 t/03-pg.t
 t/04-class.t
 t/05-caching.t
+t/associated.t
 t/issue18.t
 t/issue19.t
 t/issue25.t
 t/issue27.t
+t/perl_wheres.t
 t/table_setup_generic.pl
+TODO
 META.yml                                 Module meta-data (added by MakeMaker)

@@ -50,9 +50,19 @@ sub EXISTS {
 }
 
 sub FIRSTKEY {
+	my $self = shift;
+	$self->{fields} ||=
+		{ map { $_ => 1} $self->{result}->_fields };
+
+	# Reset iterator
+	keys %{ $self->{fields} };
+	return $self->NEXTKEY;
 }
 
 sub NEXTKEY {
+	my $self = shift;
+	my $next = each %{ $self->{fields} };
+	return ($next, $self->FETCH($next));
 }
 
 sub SCALAR {

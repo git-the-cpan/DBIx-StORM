@@ -18,10 +18,17 @@ our $WHERE = {
                 $new->setAttribute("name", $padhv->getAttribute("name"));
                 $settings->{replaceNode}->($node, $new);
         },
-	'//b:defined' => sub {
+	'//b:defined[not(*/@b)]' => sub {
 		my ($node, $op, $settings) = @_;
 		my $new = XML::XPath::Node::Element->new("postOp", "r");
 		$new->appendChild($_) foreach($node->getChildNodes);
+		$new->setAttribute("name", "IS NOT NULL");
+		$settings->{replaceNode}->($node, $new);
+	},
+	'//b:not[b:defined[not(*/@b)]]' => sub {
+		my ($node, $op, $settings) = @_;
+		my $new = XML::XPath::Node::Element->new("postOp", "r");
+		$new->appendChild($_) foreach($node->getChildNodes->[0]->getChildNodes);
 		$new->setAttribute("name", "IS NULL");
 		$settings->{replaceNode}->($node, $new);
 	},
@@ -38,7 +45,7 @@ our $WHERE = {
 	},
 	'/b:leavesub[b:lineseq[not(*/@b)]]' => sub {
 		my ($node, $op, $settings) = @_;
-		my @n = $node->findnodes('b:lineseq/*[not(*/@b)]');
+		my @n = $node->findnodes('b:lineseq/*[not(@b)]');
 		$settings->{replaceNode}->($node, $n[0]);
 	},
 	'//b:helem[b:rv2hv/r:column]' => sub {
@@ -386,8 +393,8 @@ sub foreign_keys {
 	my $table = shift;
 	my @toreturn;
 
-	if (not $self->{foreign_keys}->{$table->name()}) {
-		$self->{foreign_keys}->{$table->name()} = { $self->_fetch_foreign_keys($table) };
+	if (not $self->{foreign_keys}->{$table->name}) {
+		$self->{foreign_keys}->{$table->name} = { $self->_fetch_foreign_keys($table) };
 	}
 
 	DBIx::StORM->_debug(3, "Foreign keys for table ", $table->name(), ": ", join(",", map { $_ . "=>" . $self->{foreign_keys}->{$table->name()}->{$_} } keys %{ $self->{foreign_keys}->{$table->name()} } ), "\n");
@@ -716,8 +723,9 @@ sub do_query {
 			my $fragment;
 			if (ref($doc) eq "ARRAY") {
 				# We have a SQL fragment as a string
-				$fragment = shift @$doc;
-				push @bind_params, @$doc;
+				my @doc_copy = @$doc;
+				$fragment = shift @doc_copy;
+				push @bind_params, @doc_copy;
 			} else {
 				# $doc is a tree
 				my $abort = 0;
@@ -793,7 +801,19 @@ sub table_list {
 	my $self = shift;
 	my $dbh  = shift;
 
-	return $dbh->tables("", "", "");
+	my %table_list;
+	my $sth = $dbh->table_info("", "", "", "'TABLE','VIEW'");
+	while(my $row = $sth->fetchrow_hashref) {
+		my $table_spec = [ $row->{TABLE_CAT},
+		                   $row->{TABLE_SCHEM},
+		                   $row->{TABLE_NAME}
+		];
+
+		my $quoted_name = $dbh->quote_identifier(@$table_spec);
+
+		$table_list{$quoted_name} = $table_spec;
+	}
+	return \%table_list;
 }
 
 sub build_table_mapping {
@@ -840,6 +860,10 @@ sub _flatten_where {
 		my $str2 = $class->_flatten_where($children->[1], $abort, $table, $params, $columns, $fks);
 		my $op = $node->getAttribute("name");
 		return "$str1 $op $str2";
+	} elsif ($node->getTagName eq "postOp") {
+		my $str1 = $class->_flatten_where($node->getChildNodes->[0], $abort, $table, $params, $columns, $fks);
+		my $op = $node->getAttribute("name");
+		return "$str1 $op";
 	} elsif ($node->getTagName eq "perlVar") {
 		push @$params, $node->getAttribute("value");
 		return "?";
