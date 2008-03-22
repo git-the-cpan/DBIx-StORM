@@ -60,7 +60,9 @@ sub b_to_item {
 	elsif ($val->FLAGS & SVf_IOK) { push @$toreturn, $val->int_value; }
 	elsif ($val->FLAGS & SVf_NOK) { push @$toreturn, $val->NV; }
 	elsif ($val->FLAGS & SVf_POK) { push @$toreturn, $val->PV; }
-	elsif ($val->isa("B::RV")) {
+	elsif ($val->isa("B::RV") or
+		# Oh god! Sometimes it seems that the RV isn't described as an RV until you poke it
+		($val->isa("B::IV") and $val->can("RV") and $val->RV and $val->RV->can("RV"))) {
 		my $thingy = $val->RV;
 		my $handled = ($] < 5.008); # don't attempt unless Perl >= v5.8.0
 		if (not $handled and ref $thingy and $thingy->isa("B::PVMG")) {

@@ -607,6 +607,7 @@ sub do_query {
 	my $table_mapping;
 	my $fk_colname_map = {};
 
+	$params->{verb} ||= "SELECT";
 	my $is_update = uc($params->{verb}) eq "UPDATE";
 	my $is_delete = uc($params->{verb}) eq "DELETE";
 
@@ -761,7 +762,7 @@ sub do_query {
 		\@bind_params);
 	
 	DBIx::StORM->_debug(2, "exec query: $query\n");
-	DBIx::StORM->_debug(2, "bindings  : ". join(",", map { "\"$_\"" } @bind_params). "\n");
+	DBIx::StORM->_debug(2, "bindings  : ". join(",", map { defined($_) ? "\"$_\"" : "(undef)" } @bind_params). "\n");
 
 	if ($is_update or $is_delete) {
 		return $params->{table}->_storm->dbi->do($query, { }, @bind_params);

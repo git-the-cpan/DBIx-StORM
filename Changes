@@ -1,5 +1,10 @@
 Revision history for Perl extension DBIx::StORM.
 
+0.07  Sat 22 Mat 20:30:00 2008
+	- Fix unfortunate IV vs. PVMG issue with Records
+	- Silence a warning in debug mode
+	- Remove a warning under 5.11 where verb was not set
+
 0.06  Fri 21 Mar 23:00:00 2008
 	- Added a sample inflater for Storable
 	- Added a sample to the eg directory

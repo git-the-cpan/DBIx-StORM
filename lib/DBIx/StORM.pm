@@ -45,7 +45,7 @@ Variable: $VERSION (public static)
 
 =cut
 
-our $VERSION = '0.06';
+our $VERSION = '0.07';
 
 =begin NaturalDocs
 
