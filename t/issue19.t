@@ -8,7 +8,18 @@ use strict;
 
 use Test;
 my $tests;
-BEGIN { $tests = 3; plan tests => $tests };
+our $storm;
+BEGIN { $tests = 3; plan tests => $tests, onfail => sub { eval {
+	my $r = B::svref_2object($storm->{fruit}->grep(sub { $_->{id} == 1 })->lookup);
+	print STDERR "Records look like a " . ref($r) . "\n";
+	print STDERR "Records " . ($r->can("RV") ? "can" : "can't") . " be treated as an RV\n";
+	print STDERR "Records " . (($r->can("RV") and $r->RV->can("RV")) ? "can" : "can't") . " be treated as an RV of an RV\n";
+	require B::Concise;
+	require Data::Dumper; import Data::Dumper;
+	my $hr = {};
+	B::Concise::concise_sv($r, $hr);
+	print STDERR "B::Concise thinks Records look like " . Dumper($hr);
+} } };
 
 use DBIx::StORM;
 $DBIx::StORM::DEBUG = 0; # Quiet, please!
@@ -17,8 +28,6 @@ use FindBin;
 use lib $FindBin::Bin;
 do "table_setup_generic.pl" or die $!;
 die $@ if $@;
-
-our $storm;
 
 my $apple  = $storm->{fruit}->grep(sub { $_->{id} == 1 })->lookup;
 my $orange = $storm->{fruit}->grep(sub { $_->{id} == 2 })->lookup;
@@ -47,4 +56,4 @@ $mutant = $storm->{variety}->grep(sub {
 
 skip($skip_test, sub { defined($mutant) and $mutant->{fruit} and $mutant->{fruit}->{name} eq "orange" });
 
-main::pulldown();
+#main::pulldown();
