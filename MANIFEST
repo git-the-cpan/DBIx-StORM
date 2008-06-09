@@ -33,6 +33,8 @@ eg/inflater/datetime.pl
 eg/inflater/DateTime.pm
 eg/inflater/storable.pl
 eg/inflater/Storable.pm
+eg/tutorial/mysql.sql
+eg/tutorial/order_system.pl
 eg/use/walk_database.pl
 lib/DBIx/StORM.pm
 lib/DBIx/StORM/Class.pm

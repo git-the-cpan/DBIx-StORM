@@ -196,7 +196,14 @@ sub _get_simple_value {
         if (defined $raw_field and defined $$self->{outstanding}->{$raw_field}) {
 		return $$self->{outstanding}->{$raw_field};
         } elsif (defined $$self->{table_mapping}->{$field}) {
-		return $$self->{content}->[$$self->{table_mapping}->{$field}];
+		my $value = $$self->{content}->[$$self->{table_mapping}->{$field}];
+
+		# Allow per-field inflation
+		foreach my $i ($$self->{table}->_storm->_inflaters) {
+			$i->inflate_field($self, $$self->{content}, $$self->{table_mapping}, \$value, $field);
+		}
+
+		return $value;
 	} elsif (defined $$self->{table_mapping}->{"VIEW->".$raw_field}) {
 		return $$self->{content}->[
 			$$self->{table_mapping}->{"VIEW->".$raw_field}
@@ -408,21 +415,33 @@ sub _as_bool {
 	return not $$self->{invalid};
 }
 
-sub _delete {
-	die("Not yet implemented");
-#	my $self = shift;
-#	my $sql = "delete from " . $self->{table}->_name() . " where ";
-#	my @ret = $self->_build_where_clause();
-#	$sql .= shift @ret;
-#	my $ret =  $self->{table}->_dbh()->do($sql, { }, @ret);
+sub delete {
+	my $self = shift;
+
+	# Find out how to describe this row in the database
+	my($wheres, $pks) = $$self->{table}->_build_result_identity($self);
+
+	# Actually ask the SQLDriver to do the deletion
+	my ($sth, $table_mapping) =
+		$$self->{table}->_storm->_sqldriver->do_query({
+			table                 => $$self->{table},
+			wheres                => $wheres,
+			verb                  => "DELETE",
+			record_base_reference => $$self->{base_reference}
+	});
+
+	# And finally mark this object as broken.
+	$$self->{invalid} = 1;
 }
 
 sub commit {
 	my $self = shift;
+	my $iquote = $$self->{table}->_storm->_sqldriver->_identifier_quote;
 	$self->_not_invalid();
 
 	if ($$self->{in_table}) {
 		my @fragments;
+		my @mapping;
 		while(my($field,$value) = each %{ $$self->{outstanding} }) {
 			$field =~ s/.*->//;
 			# If a foreign key was set, then flatten it now
@@ -432,7 +451,8 @@ sub commit {
 			}
 
 			# Add this SQL fragment
-			push @fragments, [ "$field = ?", $value ];
+			push @fragments, [ "$iquote$field$iquote = ?", $value ];
+			push @mapping, $$self->{table}->name . "->" . $field;
 		}
 		return unless @fragments; # Any fields to update
 
@@ -445,7 +465,8 @@ sub commit {
 	                wheres => $wheres,
 			updates => \@fragments,
 			verb => "UPDATE",
-			record_base_reference => $$self->{base_reference}
+			record_base_reference => $$self->{base_reference},
+			mapping => \@mapping
 	        });
 
 		$$self->{outstanding} = { };
@@ -548,9 +569,14 @@ sub _update_field {
 			# Stringify and hope for the best!
 			$newval = "" . $newval;
 		}
+	} else {
+		# Allow per-field inflation
+		foreach my $i ($$self->{table}->_storm->_inflaters) {
+			$i->deflate_field($self, $$self->{content}, $$self->{table_mapping}, \$newval, $field);
+		}
 	}
 
-	if (my $id = $$self->{table_mapping}->{$field}) {
+	if (defined(my $id = $$self->{table_mapping}->{$field})) {
 		$$self->{content}->[$id] = $newval;
 		$$self->{outstanding}->{$field} = $newval;
 		# We may need to also empty the foreign key cache
@@ -597,13 +623,17 @@ sub associated {
 
 	my @possible_wheres;
 	my @bind_values;
+	my $iquote = $$self->{table}->_storm->_sqldriver->_identifier_quote;
 	while(my($col_from, $col_to) = each %$fks) {
 		if ($col_to =~ s/$looking_for//) {
 			# $copy now contains the column name
-			push @possible_wheres, "$col_from = ?";
+			push @possible_wheres, "$iquote$col_from$iquote = ?";
 			push @bind_values, $self->{$col_to};
 		}
 	}
+
+	DBIx::StORM->_debug(3, "Looking at " . $target_table->name .
+		" for @possible_wheres (values @bind_values).\n");
 
 	my $rs = DBIx::StORM::FilteredRecordSet->_new({
                 filter           => [
@@ -653,7 +683,9 @@ Shorthand for $instance->get(I<field>)
 
 =head3 $instance->delete()
 
-Remove this result from the database and invalidate the result object.
+Remove this Result from the database immediately. After this you cannot
+make any further calls on the object (although one day you may be
+allowed to re-insert it into the database).
 
 =head3 $instance->refresh()
 

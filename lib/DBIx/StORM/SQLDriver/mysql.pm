@@ -75,4 +75,12 @@ sub _final_fixup {
         return $query;
 }
 
+sub _identifier_quote {
+        '`'
+}
+
+sub _string_quote {
+        "'"
+}
+
 1;

@@ -1,6 +1,7 @@
 =head1 NAME
 
-DBIx::StORM - Perl extension for object-relational mapping
+DBIx::StORM::Tutorial - A brief introduction to the DBIx::StORM perl
+extension for object-relational mapping.
 
 =head1 TWO-MINUTE INTRODUCTION
 
@@ -40,207 +41,286 @@ You can grep and sort RecordSets using perl code to get a new RecordSet
 =head1 DESCRIPTION
 
 DBIx::StORM is an object-relational mapper designed to provide easy
-database-vendor-independent access to a DBI-accessible database by allowing
-you to access a relational database in an object-oriented fashion.
+database-vendor-independent access to a DBI-accessible database by
+allowing you to access a relational database in an object-oriented
+fashion.
 
-There are many more complete ORMs available but DBIx::StORM has a different
-take on how interaction with the database should be achieved.
+There are many more complete ORMs available but DBIx::StORM has a
+different take on how interaction with the database should be achieved.
 
-=head1 DESIGN PRINCIPLES
+In this tutorial we'll show how DBIx::StORM can be used to quickly put
+together a database-driven application.
 
-As you're using an alpha version, not all of these are fully realised yet.
+=head1 AN APPLICATION - THE ORDERING SYSTEM
 
-=over
+We will be putting together a command-line driven system for logging
+and amending orders. In our model we will assume that an order
+is associated with a customer name and address, and that an order has
+zero or more order items that we will be shipping to the customer.
+Each order item has a product identifier and a description.
 
-=item * Gets to work quickly with your database
+Before using this code you need to create the database tables - how to
+do this varies from database to database. Sample schema SQL for some
+databases is kept in the C<eg/tutorial> directory of this
+distribution.
 
-DBI::StORM is designed to work around your database. You don't have to
-follow any naming conventions on your tables or columns.  The module will
-find out the primary and foreign keys in your database, and will help you
-walk the foreign keys.
+The full code described below (with some enhancements) is also
+included in this distribution as C<eg/tutorial/order_system.pl>.
 
-If your database schema is lacking the necessary metadata you can point
-the module in the right direction with the C<$dbix_storm-E<gt>add_hint>
-method.
+=head2 CONNECTING
 
-=item * Connection-centric, not class-centric
+If you've used DBI previously you should find connecting to your
+database a breeze:
 
-Tables are accessed via the connection object and not via a specific class,
-which makes it easy to access new tables. If you want to set up a class
-that maps to a given table, you can use the helper class to do this.
+  my $db = DBIx::StORM->connect("DBI:mysql:database=test")
 
-=item * Finding and sorting should follow perl
+The StORM connect method takes the same parameters as the DBI
+connect method does - you can provide usernames, passwords and other
+details exactly as if you were using DBI.
 
-DBIx::StORM provides the C<grep> and C<sort> methods which like the perl
-operators accept a subroutine reference that can do whatever you want them
-to. No passing round chunks of SQL, custom pseudo-code or lists of string
-operators. Your perl subs are syntax-checked at compile time just as normal.
+The connect call returns a StORM connection object on success (C<$db>
+in the example above), or C<undef> if there's a problem connecting.
 
-=item * But this shouldn't come at the cost of performance
+=head2 CREATING AN ORDER
 
-DBIx::StORM will examine your subroutines and understand what it is trying to
-do. It can then turn it into SQL and use the power of the database to your
-advantage. This gives you the best of both worlds - the portability of perl
-code to query the database, but the performance of the native database query.
-Judicious use of caching means that the subroutine should only be compiled
-when needed.
+Having connected we now need to let the user create a new order. This
+is stored in the C<orders> table and is automatically assigned a
+unique order ID by the database.
 
-=item * Objects should feel like corresponding perl datatypes
+Firstly we select the table by accessing it from the connection object:
 
-Using perl's overloading, you can examine the tables in a connection by
-treating it like a hash reference, a result set works like an array reference
-and a record works like a hash reference. You get the power of standard perl
-functions to access your data.
+  my $table = $dbh->{orders};
 
-=back
+At this point we have a StORM Table object, which has an C<insert()>
+method. This method takes a subroutine describing of the row we wish
+to insert:
 
-=head1 CRUD
-
-Most ORMs are designed to meet the needs of the standard CRUD application -
-Create, Read, Update and Delete. Let's see how DBIx::StORM allows you to
-operate on your data. Note that this is about data modification - DBIx::StORM
-doesn't yet permit table modification.
-
-=head2 CONNECT
-
-Connecting works just like DBI. You pass the same parameters as you would
-when connecting to your database with DBI, and DBIx::StORM will set up the
-database connection for you and work out what is on the other end of the
-connection:
-
-  my $connection = DBIx::StORM->connect(
-    "DBI:mydb:database=test_database",
-    "my_username",
-    "my_password",
-  ) or die("Connection error");
-
-=head2 CREATE
-
-Once you've got a connection, you can easily insert a row by calling the
-C<insert> method on a DBIx::StORM::Table object fetched from the connection.
-
-The insert method takes a subroutine reference. Inside the subroutine, $_
-is set to the DBIx::StORM::Record object about to be inserted. You can
-set the columns on the record, and at the end of the subroutine the record
-is inserted.
-
-  $connection->{my_table}->insert(sub {
-    $_->{my_id}   = 1;
-    $_->{my_name} = "John";
+  my $row = $table->insert(sub {
+    # Description of new row goes here, see below
   });
 
-Want to insert a lot of data at once? You can re-use the subroutine to insert
-the rows in a loop.
+On success the C<insert()> method returns a new StORM Record object,
+and C<undef> if the row can't be inserted for any reason.
 
-  my $table = $connection->{fruit};
-  
-  foreach my $fruit (qw(apples oranges strawberries)) {
-    $table->insert(sub { $_->{type} = $fruit; });
+Now let's look at how we describe a row:
+
+  sub {
+    # Set the customer name...
+    $_->{customer_name} = $customer_name;
+    # ...and their address
+    $_->{customer_address} = $customer_address;
   }
 
-=head2 READ
+The subroutine you supply is called by StORM with the C<$_> variable
+set to the new Record object that is being created. You can assign to
+columns by setting the hash key of the same name as the column you wish
+to set (C<$_-E<gt>{column_name}>). As this is a perl assignment, you
+can set it to any valid perl expression. The following are all legal:
 
-The connection object is a hash reference that contains all of the tables
-available in this database. You can iterate over the tables as follows:
+  $_->{name} = $first_name . " " . $last_name;
+  $_->{hypotenuse} = $opposite  / sin($angle);
 
-  while(my ($table) = each %$connection) {
-    print "This connection contains $table\n";
+Let's put this all together and show how to create an order:
+
+  # Insert a new row into the database
+  my $order = $db->{orders}->insert(sub {
+    # Set the customer name...
+    $_->{customer_name} = $customer_name;
+    # ...and their address
+    $_->{customer_address} = $customer_address;
+  });
+
+The row is written to the database immediately, and any magic columns
+(for example, auto-incrementing columns/sequence columns) should then
+be filled in. So that the order can be changed in future, let's print
+the order number for the user.  To read a value from the Record you
+just need to access the hash key for the column.
+
+  print "Your order was successfully created - order id ",
+    $order->{id}, "\n";
+
+=head2 ADDING AN ORDER ITEM
+
+Adding an item to an order is very similar. The user specifies the
+product identifier, description, quantity and an order ID to add it
+to. After some checking that the quantity is valid, we need to ensure
+that the order number is also valid. We do this by accessing the
+order.
+
+To do this, we use the C<grep()> method on the Table object. Like
+perl's C<grep> function, this method takes a subroutine that can
+choose whether it wishes to accept the row. It is called* once for
+each Record in the table and if the subroutine returns true then the
+grep will "accept" that Record.
+
+  my $order = $db->{orders}->grep(sub {
+    $_->{id} == $order_id
+  });
+
+As more than one Record could potentially match C<grep()> returns a
+RecordSet object. As we know we will only ever get one Record (as ID
+is our primary key), we can turn the RecordSet into a Record using
+the C<lookup()> method on the RecordSet.
+
+Putting this together gives us:
+
+  # Fetch the order Record object
+  my $order = $db->{orders}->grep(sub {
+    $_->{id} == $order_id
+  })->lookup;
+
+Having successfully found an order we can then insert the order item
+into the database using the Table's C<insert()> method as above:
+
+  # Now insert the row for the order item
+  $db->{order_items}->insert(sub {
+    # It's associated with $order
+    $_->{order} = $order;
+
+    # And set the other fields
+    $_->{product_id}  = $product_id;
+    $_->{description} = $description;
+    $_->{quantity}    = $qty;
+  });
+
+Note that we set the C<order> column to C<$order>. We could be explicit
+and use C<$order-E<gt>{id}>, but if we assign a Record to a column
+directly then StORM will take care of working out which value should
+be stored (using any foreign keys between the two tables).
+
+* This is a bit of a lie. To call the perl code for every row would be
+terribly slow on large tables, so StORM works out what you perl code
+means and asks the database directly.
+
+=head2 DISPLAYING AN ORDER
+
+To display an order we first need to find the order's Record. We saw
+how to do this above, but for some variation let's see another, more
+succinct way:
+
+  my $order = $db->{orders}->identity($order_id);
+
+The C<identity()> method on a table fetches a Record based on the
+table's primary key (which is unique to the row). In our case the
+order ID is also the primary key and so the C<identity()> method can
+be used to fetch the order. As the primary key can only ever match
+one record this method returns the Record object directly. C<undef>
+is returned if there is no such Record.
+
+Now we can display information from the Record:
+
+  print "Order ", $order->{id}, "\n";
+
+Let's now fetch the order items that are part of this order. We can
+quickly access the order items by using the C<associated()> method
+on the Record. It takes a table name, and using the database's
+foreign keys it finds all Records in this table that point to
+the Record. As several Records may match it returns a RecordSet:
+
+  my $order_items = $order->associated("order_items");
+
+For neatness we should sort these by product identifier. We can do
+this using the RecordSet's C<sort()> method, which works rather like
+the perl function. Similarly to the C<grep()> method we saw before
+the C<sort()> method takes two Records as C<$a> and C<$b> and the
+return value lets StORM know the sort order* (see perl's C<sort>
+documentation for the details of the return value):
+
+  my $sorted_order_items = $order_items->sort(sub {
+    $a->{product_id} <=> $b->{product_id}
+  });
+
+And as before we can "stack" these methods to do both at once:
+
+  # Now get the items from the order_items table using the
+  # foreign key in reverse.
+  my $order_items = $order->associated("order_items")->sort(sub {
+    $a->{product_id} <=> $b->{product_id}
+  });
+
+That's all well and good, but now we need to access the Records
+inside, and as there are potentially several Records inside we can't
+use C<lookup()> again. Fortunately the solution is straighforward - if
+you treat a RecordSet you can C<foreach> over it:
+
+  foreach my $item (@$order_items) {
+    # $item is a StORM record - you can do things with $item here
   }
 
-Each of these tables is a type of DBIx::StORM::RecordSet, which
-conceptually is a list of records in the table. Each record is of type
-DBIx::StORM::Record:
+Using the hash-style access on the Records, we get this:
 
-  my $table = $connection->{my_table};
-  print "This table contains ", scalar(@$table), " records\n";
-
-Each DBIx::StORM::Record behaves like a hash reference, where each key
-is a column name, and the value is a column value:
-
-  foreach my $record (@$table) {
-    print "ID: ", $record->{id}, " Name: ", $record->{name}, "\n";
+  foreach my $item (@$order_items) {
+    print " ", $item->{quantity}, " x ",
+      $item->{product_id}, ": ",
+      $item->{description}, "\n";
   }
 
-If the column is a foreign key, the column value is another DBIx::StORM::Record
-object. If you print the object then you can find out the ID, but you can
-also treat it like a hash reference too.
+=head2 CHANGING A QUANTITY OF AN ORDER ITEM
 
-  print "Order ", $order->{id}, " was ordered by ",
-    $order->{customer}->{name}, "\n";
+To let the user change the quantity of an order item, we need the user
+to specify an order ID and a product identifier. We can then use
+the C<grep()> method on the order items Table to fetch the Record:
 
-You can limit the results to those that match specific criteria with the
-C<grep> method. This method takes a perl subroutine reference which is
-called for each record in the RecordSet, with $_ set to the DBIx::StORM::Record
-object for the record. The method returns a new DBIx::StORM::RecordSet which
-only contains records for which the subroutine returns true:
+  my $order_item = $db->{order_items}->grep(sub {
+    $_->{product_id} == $product_id and
+    $_->{order} == $order_id
+  })->lookup;
 
-  # Find only orders worth more than £100
-  my $high_value_orderes = $orders->grep(sub { $_->{value} > 100 });
+The final C<lookup()> coerces the RecordSet into a Record as before.
 
-You can sort the results with the C<sort> method. This method takes a perl
-subroutine reference which is called for each record in the RecordSet, with
-$_ set to the DBIx::StORM::Record object for the record. The method returns
-a new DBIx::StORM::RecordSet, sorted according to the return value of the
-subroutine. See information on perl's L<sort> operator to see how this works:
+Changing the Record is rather like reading, except we assign to the
+hash key this time:
 
-  # Sort by order value
-  my $sorted_results = $orders->sort(sub { $a->{value} <=> $b->{value} });
+  $order_item->{quantity} = $new_qty;
 
-To finish off, here's a way to iterate through every table, every record in
-the table, and print every column in each record. Beware! It may generate
-a I<lot> of output!
+The change is written to the database immediately (if you want to make
+a lot of changes at once you may wish to change this using the
+C<autocommit> method).
 
-  while(my ($table_name, $table) = each %$connection) {
-    print "Displaying table: $table_name\n\n";
+This is handy for changing one Record, but it is possible to modify an
+entire RecordSet at once - see the RecordSet documentation for the
+C<update()> method.
 
-    foreach my $record (@$table) {
-      print "Record with primary key $record\n";
+=head2 DELETING AN ORDER ITEM
 
-      while(my ($column_name, $value) = each %$record) {
-        print "  $column_name = $value";
-        print " and is a foreign key" if ref($value);
-        print "\n";
-      }
-    }
-  }
+In case a customer changes their mind we need to be able to remove an
+item from an order. Like changing, above, we will take an order ID
+and a product identifer and fetch the order_item Record:
 
-=head2 UPDATE
+  my $order_item = $db->{order_items}->grep(sub {
+    $_->{product_id} == $product_id and
+    $_->{order} == $order_id
+  })->lookup;
 
-If you want to update a specific record, you can set the hash keys to
-update the value. The update will be written back to the database immediately.
+Then we call the C<delete()> method on the Record:
 
-  # Update order price to be £40 more
-  $order->{value} += 40;
+  $order_item->delete;
 
-All DBIx::StORM::RecordSet objects (eg. tables, and those returned by
-C<sort> and C<grep>) have an update method which accepts a subroutine
-reference. This subroutine reference is called for each record in the
-RecordSet, and has $_ set to each DBIx::StORM::Record in turn. You can update
-the records in this subroutine:
+Again, the action happens immediately.
 
-  # All open orders now cost 5.95 more to allow for shipping
-  $open_orders = $orders->grep({ $_->{status} eq "open" });
-  $open_orders->update(sub { $_->{value} += 5.95 });
+If you wish to delete lots of Records at once then see the RecordSet
+documentation for the C<delete()> method.
 
-=head2 DELETE
+=head2 THAT'S ALL FOLKS
 
-All DBIx::StORM::Record objects have a C<delete> method which immediately
-removes the record from the database table:
+This tutorial has hopefully whetted your appetite and shown how you
+can use StORM for creating, reading, updating and deleting rows in
+your database.
 
-  $record->delete()
-  # $record now won't work and will die if you attempt to do so
+There are more methods available than covered here. In particular
+the L<DBIx::StORM::Record> and L<DBIx::StORM::RecordSet> classes cover
+much of the everyday data manipulation.
 
-To mass-delete records, RecordSet objects also have a C<delete> method
-that deletes all the Record objects in the RecordSet:
-
-  # Delete all shipped orders
-  my $shipped_orders = $orders->grep(sub { $_->{status} eq "shipped" });
-  $shipped_orders->delete();
-  # $shipped_orders should now be an empty RecordSet
+If you require a more application-centric approach to database access
+you can integrate StORM more tightly using L<DBIx::StORM::Class> and
+L<DBIx::StORM::Inflater>.
 
 =head1 AUTHOR
 
 Luke Ross, E<lt>luke@lukeross.nameE<gt>
+
+You can also join the StORM mailing list by sending an email to
+L<mailto:storm-devel-subscribe@lukeross.name>.
 
 =head1 COPYRIGHT AND LICENSE
 

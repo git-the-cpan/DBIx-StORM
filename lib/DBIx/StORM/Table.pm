@@ -385,6 +385,7 @@ sub _build_result_identity {
 
 	# Build the where clause that matches the primary key
 	my @where;
+	my $iquote = $self->_storm->_sqldriver->_identifier_quote;
 	foreach(@$pk) {
 		my $sql_col = $_;
 		$sql_col =~ s/.*->//;
@@ -392,7 +393,7 @@ sub _build_result_identity {
 
 		# To get the content we need to index the array based on
 		# the table mapping.
-		push @where, [ "$sql_col = ?", $$record->{content}->[
+		push @where, [ "$iquote$sql_col$iquote = ?", $$record->{content}->[
 		        $$record->{table_mapping}->{$ref_col}
 		] ];
 	}
@@ -569,6 +570,7 @@ sub identity {
 	my @wheres;
 
 	my $pks = $self->primary_key;
+	my $iquote = $self->_storm->_sqldriver->_identifier_quote;
 	if (not ref $primary_key_info) {
 		croak("Multi-column primary key in table " . $self->name . 
 		    " but only one identity value specified")
@@ -577,7 +579,7 @@ sub identity {
 		my $pk = $pks->[0];
 		$pk =~ s/.*->//;
 
-		push @wheres, [ $pk . " = ?", $primary_key_info];
+		push @wheres, [ "$iquote$pk$iquote = ?", $primary_key_info];
 	} else {
 		foreach my $field (@$pks) {
 			$field =~ s/.*->//;
@@ -586,7 +588,7 @@ sub identity {
 				    $self->name . "but was not specified");
 			}
 
-			push @wheres, [ "$field = ?",
+			push @wheres, [ "$iquote$field$iquote = ?",
 				$primary_key_info->{$field} ];
 		}
 	}

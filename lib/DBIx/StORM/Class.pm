@@ -498,8 +498,9 @@ __END__
 
 =head1 NAME
 
-DBIx::StORM::Class - A parent class for classes that would like to back onto a
-DBIx::StORM::Table and have records blessed into their own class
+DBIx::StORM::Class - A parent class for classes that would like to back
+onto a DBIx::StORM::Table and have records blessed into their own
+class.
 
 =head1 SYNOPSIS
 

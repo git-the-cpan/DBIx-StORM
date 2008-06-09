@@ -715,36 +715,44 @@ DBIx::StORM::RecordSet
 
 =head1 DESCRIPTION
 
-This represents a set of results (rows) from the database. There are a few methods here to manipulate the rows as a group,
-but conviently a RecordSet behaves like an array reference, so by doing so you can foreach() over it or look up rows
-by index. You should not create RecordSets directly, but instead obtain them from a DBIx::StORM connection using the table
-methods.
+This represents a set of results (rows) from the database. There are a
+few methods here to manipulate the rows as a group, but conveniently a
+RecordSet behaves like an array reference, so by doing so you can
+foreach() over it or look up rows by index. You should not create
+RecordSets directly, but instead obtain them from a
+DBIx::StORM connection using the table methods.
 
 =head2 METHODS
 
 =head3 $instance->grep(sub { })
 
-Filter the result set, returning a new RecordSet. The subroutine will be called once for each row in the RecordSet
-with $_ set to the DBIx::StORM::Record object. If the subroutine returns a true value the Record will be added to the
-return RecordSet. $instance is not modified.
+Filter the result set, returning a new RecordSet. The subroutine will
+be called once for each row in the RecordSet with $_ set to the
+DBIx::StORM::Record object. If the subroutine returns a true value the
+Record will be added to the return RecordSet. $instance is not
+modified.
 
 =head3 $instance->lookup(field)
 
-Return the value of I<field> from the first result in the set. Shorthand for $instance->[0]->_get(I<field>)
+Return the value of I<field> from the first result in the set.
+Shorthand for $instance->[0]->_get(I<field>)
 
 =head3 $instance->update(sub { })
 
-For each Record in the RecordSet, the subroutine is executed with $_ set to the Record. The subroutine is allowed to
-alter the fields of $_, and the changes will be written back to the database.
+For each Record in the RecordSet, the subroutine is executed with $_
+set to the Record. The subroutine is allowed to alter the fields of
+$_, and the changes will be written back to the database.
 
 =head3 $instance->delete()
 
-The Records in the RecordSet will all be invalidated and then removed from the database.
+The Records in the RecordSet will all be invalidated and then removed
+from the database.
 
 =head2 EXAMPLE
 
  foreach my $result (@$resultset) {
-   print "In row ", $result->id, " the total price is ", $result->total, ".\n";
+   print "In row ", $result->id, " the total price is ",
+     $result->total, ".\n";
  }
 
 =cut

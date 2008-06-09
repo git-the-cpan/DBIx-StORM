@@ -1,4 +1,4 @@
-DBIx-StORM version 0.08
+DBIx-StORM version 0.09
 =======================
 
 An embryonic, but advanced database-driven Perl ORM with support for
@@ -6,6 +6,8 @@ optimised native-language queries, foreign key support with hinting and
 learning-based field selection.
 
 More information can be found in the DBIx::StORM::Tutorial document.
+There is also a mailing list - send an email to
+storm-devel-subscribe@lukeross.name to join.
 
 WARNING
 

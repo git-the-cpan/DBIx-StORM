@@ -45,7 +45,7 @@ Variable: $VERSION (public static)
 
 =cut
 
-our $VERSION = '0.08';
+our $VERSION = '0.09';
 
 =begin NaturalDocs
 
@@ -361,8 +361,66 @@ DBIx::StORM - Perl extension for object-relational mapping
 
 =head1 DESCRIPTION
 
-The base of the StORM ORM system. This class represents a database
-connection.
+DBIx::StORM is an object-relational mapper designed to provide easy
+database-vendor-independent access to a DBI-accessible database by allowing
+you to access a relational database in an object-oriented fashion, using
+perl expressions to specify your criteria.
+
+If you'd like to know what makes DBIx::StORM different from other ORMs
+then please see L<DESIGN PRINCIPLES> below.
+
+If you're after a quick-start guide please see L<DBIx::StORM::Tutorial>.
+
+=head1 DESIGN PRINCIPLES
+
+=over
+
+=item * Gets to work quickly with your database
+
+DBI::StORM is designed to work around your database. You don't have to
+follow any naming conventions on your tables or columns.  The module will
+find out the primary and foreign keys in your database, and will help you
+walk the foreign keys.
+
+If your database schema is lacking the necessary metadata you can point
+the module in the right direction with the C<$dbix_storm-E<gt>add_hint>
+method.
+
+=item * Connection-centric, not class-centric
+
+Tables are accessed via the connection object and not via a specific class,
+which makes it easy to access new tables. If you want to set up a class
+that maps to a given table, you can use the helper class to do this.
+
+=item * Finding and sorting should follow perl
+
+DBIx::StORM provides the C<grep> and C<sort> methods which like the perl
+operators accept a subroutine reference that can do whatever you want them
+to. No passing round chunks of SQL, custom pseudo-code or lists of string
+operators. Your perl subs are syntax-checked at compile time just as normal.
+
+=item * But this shouldn't come at the cost of performance
+
+DBIx::StORM will examine your subroutines and understand what it is trying to
+do. It can then turn it into SQL and use the power of the database to your
+advantage. This gives you the best of both worlds - the portability of perl
+code to query the database, but the performance of the native database query.
+Judicious use of caching means that the subroutine should only be compiled
+when needed.
+
+=item * Objects should feel like corresponding perl datatypes
+
+Using perl's overloading, you can examine the tables in a connection by
+treating it like a hash reference, a result set works like an array reference
+and a record works like a hash reference. You get the power of standard perl
+functions to access your data.
+
+=back
+
+=head1 THE DBIx::StORM OBJECT
+
+This class is the base of the StORM ORM system. This class represents a
+database connection.
 
 You can dereference this object to access a hash. The hash keys are the
 string names of the tables available on this connection, and the values

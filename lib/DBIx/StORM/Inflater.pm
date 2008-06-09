@@ -92,6 +92,62 @@ sub deflate {
 	return $values;
 }
 
+=begin NaturalDocs
+
+Method: inflate_field (public instance)
+
+  Inflate a field at access-time
+
+Parameters:
+
+  Object $record - The DBIx::StORM::Record object this query came from
+  ArrayRef $content - The array of values in the record.
+  ArrayRef $table_mapping - A table mapping of columns, as described in
+                            the documentation for insert.
+  ScalarRef $valueref - A reference to the scalar we're planning
+                        to return to the user.
+  String $field - The field being inflated.
+
+Returns:
+
+  Nothing
+
+=end NaturalDocs
+
+=cut
+
+sub inflate_field {
+	my ($self, $record, $content, $table_mapping, $valueref, $field) = @_;
+}
+
+=begin NaturalDocs
+
+Method: deflate_field (public instance)
+
+  Deflate a field at access-time
+
+Parameters:
+
+  Object $record - The DBIx::StORM::Record object this query came from
+  ArrayRef $content - The array of values in the record.
+  ArrayRef $table_mapping - A table mapping of columns, as described in
+                            the documentation for insert.
+  ScalarRef $valueref - A reference to the scalar we received from the
+                        user.
+  String $field - The field being deflated.
+
+Returns:
+
+  Nothing
+
+=end NaturalDocs
+
+=cut
+
+sub deflate_field {
+	my ($self, $record, $content, $table_mapping, $valueref, $field) = @_;
+}
+
 1;
 __END__
 

@@ -487,18 +487,19 @@ sub _build_columns {
 	my $finding = shift;
 	my $required = shift;
 	my $table_id = shift;
+	my $iquote = $self->_identifier_quote;
 
 	COLUMN_LOOP:
 	foreach my $to_parse (@$finding) {
 		die("bad column specificiation: $to_parse") unless
 			($to_parse =~ m/^(.*?)->(.*)/);
-		my $table = $1;
+		my $table      = $1;
 		my $table_spec = $1;
-		my $parsing = $2;
+		my $parsing    = $2;
 
 		if (not $tables->{$table_spec}) {
 			my $table_alias = "t" . ++$$table_id;
-			my $clause = "$table AS $table_alias";
+			my $clause = "$iquote$table$iquote AS $table_alias";
 			$tables->{$table_spec} = {
 				table_name => $table, # The real table name
 				table_spec => $table_spec, # The FK path
@@ -521,14 +522,15 @@ sub _build_columns {
 				next COLUMN_LOOP;
 			}
 			my ($new_table, $new_column) = $new_path =~ m/(.*)->(.*)/;
+			$new_table = "$iquote$new_table$iquote";
 			
 			if (not $tables->{$new_spec}) {
 				my $table_alias = "t" . ++$$table_id;
 
 				$tables->{$new_spec} = {
-				table_name => $new_table, # The real table name
-				table_spec => $new_spec, # The FK path
-				table_alias => $table_alias, # t + number
+				table_name   => $new_table, # The real table name
+				table_spec   => $new_spec, # The FK path
+				table_alias  => $table_alias, # t + number
 				table_clause => $current_table->{table_clause}
 				};
 
@@ -562,8 +564,9 @@ sub do_insert {
 		}
 	}
 
-	my $query = "INSERT INTO " . $table->name . " (";
-	$query .= join(", ", map { s/.*->//; $_ } @mapping);
+	my $iquote = $self->_identifier_quote;
+	my $query = "INSERT INTO $iquote" . $table->name . "$iquote (";
+	$query .= join(", ", map { s/.*->//; "$iquote$_$iquote" } @mapping);
 	$query .= ") VALUES (";
 	$query .= join(", ", map { "?" } @$values);
 	$query .= ")";
@@ -622,22 +625,22 @@ sub do_query {
 		my $doc = $params->{updates};
 		if (ref($doc) eq "ARRAY") {
 			my @fragments;
-			my @values;
+			my $values;
 			foreach my $clause (@$doc) {
 				push @fragments, shift(@$clause);
-				push @values, @$clause;
+				push @$values, @$clause;
 			}
 
 			# If we have a deflater, let it munge @values as desired
 			if (my @deflaters = $params->{table}->_storm->_inflaters) {
 				my @tweaked_fragments = map { $params->{table}->name . "->$_" } @fragments;
 				foreach(@deflaters) {
-					@values = $_->deflate($params->{table}->_storm, \@values, \@tweaked_fragments);
+					$values = $_->deflate($params->{table}->_storm, $values, $params->{mapping});
 				}
 			}
 
 			$query .= join ", ", @fragments;
-			push @bind_params, @values;
+			push @bind_params, @$values;
 		} else {
 			my $abort = 0;
 			$query .= $self->_flatten_update($doc->getFirstChild, \$abort, $params->{table}, \@bind_params);
@@ -682,11 +685,12 @@ sub do_query {
 
 	# Build the FROM clause of the SQL. If we only have one table
 	# we don't need aliases so use just the table name.
+	my $iquote = $self->_identifier_quote;
 	my $table_clause;
 	if (1 == scalar keys %$tables) {
 		my (undef, $table) = each %$tables;
-		if (${ $table->{table_clause} } eq $table->{table_name} . " AS t1") {
-			$table_clause = $table->{table_name};
+		if (${ $table->{table_clause} } eq $iquote . $table->{table_name} . $iquote . " AS t1") {
+			$table_clause = $iquote . $table->{table_name} . $iquote;
 			# And strip off the prefix from columns
 			while (my($k) = each %$columns) { $columns->{$k} =~ s/^t1\.// };
 		}
@@ -699,7 +703,7 @@ sub do_query {
 	}
 
 	if (not $params->{recommended_columns}) {
-		$table_clause ||= $params->{table}->name;
+		$table_clause ||= $iquote . $params->{table}->name . $iquote;
 		my $view_clause = $params->{views} ?
 		", " . join(", ", map { $params->{views}->{$_} . " AS $_" } sort keys %{ $params->{views} })
 		: "";
@@ -854,6 +858,7 @@ sub opcode_map {
 
 sub _flatten_where {
 	my($class, $node, $abort, $table, $params, $columns, $fks) = @_;
+	my $iquote = $class->_identifier_quote;
 
 	     if ($node->getTagName eq "binOp")   {
 		my $children = $node->getChildNodes;
@@ -874,7 +879,7 @@ sub _flatten_where {
         } elsif ($node->getTagName eq "foreignKey") {
                 return $columns->{$fks->{$node}};
 	} elsif ($node->getTagName eq "column") {
-		return $node->getAttribute("name");
+		return $iquote . $node->getAttribute("name") . $iquote;
 	} else {
 		$$abort = "Unknown operation " . $node->getTagName;
 	}
@@ -942,6 +947,14 @@ sub _prepare_bind_params {
 sub _final_fixup {
 	my ($self, $params, $query) = @_;
 	return $query;
+}
+
+sub _identifier_quote {
+	''
+}
+
+sub _string_quote {
+	"'"
 }
 
 1;

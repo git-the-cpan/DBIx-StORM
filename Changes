@@ -1,5 +1,12 @@
 Revision history for Perl extension DBIx::StORM.
 
+0.09
+	- Added mailing list to documentation
+	- Tidied up the documentation for the benefit of CPAN
+	- Re-examined the tutorial
+	- Added the ability to delete Records
+	- Column names in the generated SQL are now quoted
+
 0.08  Sun 23 Mar 00:16:50 2008
 	- Add debugging to issue19.t
 	- Made the check for RVRV less fussy
