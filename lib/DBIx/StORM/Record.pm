@@ -29,8 +29,6 @@ use overload '""'     => "_as_string",
 use Scalar::Util qw(blessed);
 
 use DBIx::StORM::TiedCallback;
-use DBIx::StORM::TiedColumn;
-use DBIx::StORM::TiedRecord;
 
 =begin NaturalDocs
 
@@ -122,7 +120,7 @@ sub _as_tied_hash {
 
 	# Make a hash, tie it and return it
 	my %hash;
-	tie %hash, "DBIx::StORM::TiedRecord", $self;
+	tie %hash, "DBIx::StORM::Record", $self;
 	return $$self->{tied} = \%hash;
 }
 
@@ -141,7 +139,7 @@ Parameters:
 Returns:
 
   Tied scalar as an l-value - The scalar may be a reference, and is tied to
-  class <DBIx::StORM::TiedColumn>
+  class <DBIx::StORM::TiedCallback>
 
 =end NaturalDocs
 
@@ -160,8 +158,18 @@ sub get : lvalue {
 	} else {
 		# Else we have a simple value result, tie it
 		my $resresult;
-		tie $resresult, "DBIx::StORM::TiedColumn",
-			$self, $self->_build_column_information_for_get($field);
+		my @column_info = $self->_build_column_information_for_get($field);
+		tie $resresult, "DBIx::StORM::TiedCallback",
+			fetch => sub {
+				return $self->_get_simple_value(@column_info);
+			},
+			store => sub {
+				my $tie_object = shift;
+				my $newval = shift;
+
+				$self->_update_field($column_info[0], $newval);
+				return $newval;
+			};
 		$resresult;
 	}
 }
@@ -171,7 +179,7 @@ sub get : lvalue {
 Method: _get_simple_value (private instance)
 
   Fetch the scalar value of a "simple" (ie. not foreign key) column. This
-  is used by TiedColumn and TiedRecord.
+  is used by TiedCallback.
 
 Parameters:
 
@@ -204,10 +212,6 @@ sub _get_simple_value {
 		}
 
 		return $value;
-	} elsif (defined $$self->{table_mapping}->{"VIEW->".$raw_field}) {
-		return $$self->{content}->[
-			$$self->{table_mapping}->{"VIEW->".$raw_field}
-		];
 	} else {
 		return undef; # Field doesn't exist
 	}
@@ -578,7 +582,7 @@ sub _update_field {
 
 	if (defined(my $id = $$self->{table_mapping}->{$field})) {
 		$$self->{content}->[$id] = $newval;
-		$$self->{outstanding}->{$field} = $newval;
+		$self->updated($field => $newval);
 		# We may need to also empty the foreign key cache
 		delete $$self->{cache_fk}->{$field};
 		DBIx::StORM->_debug(3, "Old _update_field: ". $field. "=$newval\n");
@@ -586,7 +590,7 @@ sub _update_field {
 		my $id = @{ $$self->{content} };
 		$$self->{content}->[$id] = $newval;
 		$$self->{table_mapping}->{$field} = $id;
-		$$self->{outstanding}->{$field} = $newval;
+		$self->updated($field => $newval);
 		DBIx::StORM->_debug(3, "New _update_field: ". $field. "=$newval\n");
 	}
 }
@@ -647,11 +651,114 @@ sub associated {
                 storm            => $target_table->_storm,
                 wheres           => [ ],
                 sorts            => [ ],
-                views            => { },
                 perl_wheres      => [ ],
                 perl_sorts       => [ ],
-                perl_views       => { }
         });
+}
+
+=begin NaturalDocs
+
+Method: updated (public instance)
+
+  Marks a field as having been changed, which will either push the
+  field onto the list of fields that need to be written back or will
+  trigger an immediate write to the database if autocommit is set.
+
+  This allows the user to mark a field as changed where the change
+  is made to an inner part of a data structure (as in this case no
+  STORE() occurs on the outer data structure, so we don't even know
+  that it is happening.
+
+Parameters:
+
+  String $field - The field that has just been changed.
+  Scalar $new_value - Optionally, the new value that has just been assigned.
+                      This is intended for internal use to save the overhead
+                      of fetching the new value using get().
+
+Returns:
+
+  Nothing
+
+=end NaturalDocs
+
+=cut
+
+sub updated {
+	my ($self, $field, $new_value) = @_;
+
+	# Fetch the new value if needbe
+	if (not exists $$self->{outstanding}->{$field}) {
+		$new_value = $self->get($field)
+			if not defined $new_value;
+		$$self->{outstanding}->{$field} = $new_value;
+	}
+
+	# Actually save to DB if autocommit is turned on
+	$self->commit if ($$self->{commit});
+}
+
+sub TIEHASH {
+	my ($class, $self) = @_;
+	return $self;
+}
+
+sub FETCH {
+	my ($self, $index) = @_;
+
+	my @result = $self->_build_column_information_for_get($index);
+	return undef unless @result;
+
+	if (ref $result[0]) {
+		# We have a foreign key column
+		$result[0];
+	} else {
+		return $self->_get_simple_value(@result);
+	}
+}
+
+sub STORE {
+	my ($self, $index, $newval) = @_;
+
+	my @col = $self->_build_column_information_for_get($index);
+	die("Cannot update this field: $index") unless @col;
+
+	if (ref $col[0]) {
+		# We're updating a foreign key columnn
+		$self->_update_field($col[1], $newval);
+	} else {
+		# We're updating a simple value
+		$self->_update_field($col[0], $newval);
+	}
+	$self->commit if ($$self->{commit});
+
+	return $self;
+}
+
+sub EXISTS {
+	my ($self, $index) = @_;
+	return defined($self->FETCH($index));
+}
+
+sub FIRSTKEY {
+	my $self = shift;
+	$self->{fields} ||=
+		{ map { $_ => 1} $self->_fields };
+
+	# Reset iterator
+	keys %{ $self->{fields} };
+	return $self->NEXTKEY;
+}
+
+sub NEXTKEY {
+	my $self = shift;
+	my $next = each %{ $self->{fields} };
+	return ($next, $self->FETCH($next));
+}
+
+sub SCALAR {
+	my $self = shift;
+	return $self;
 }
 
 1;
@@ -672,14 +779,14 @@ the table to add a new row.
 
 =head2 METHODS
 
-=head3 $instance->get(field)
+=head3 $instance->get(I<$field>)
 
-Look up the value for column I<field> in the row. You can assign to the
+Look up the value for column I<$field> in the row. You can assign to the
 field as well to update the value.
 
-=head3 $instance->{I<field>}
+=head3 $instance->{I<$field>}
 
-Shorthand for $instance->get(I<field>)
+Shorthand for $instance->get(I<$field>)
 
 =head3 $instance->delete()
 
@@ -690,5 +797,13 @@ allowed to re-insert it into the database).
 =head3 $instance->refresh()
 
 Update the object by re-loading the row from the database.
+
+=head3 $instance->updated(I<$field>)
+
+In certain circumstances (typically where a field has been inflated
+into a data structure) the Record may not always recognise that a field
+has been modified. This call is provided to allow you to mark a field
+as having been changed, so that StORM will arrange to save it at
+the appropriate moment.
 
 =cut

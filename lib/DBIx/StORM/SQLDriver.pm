@@ -52,22 +52,36 @@ our $WHERE = {
 		my ($node, $op, $settings) = @_;
 		my $new = XML::XPath::Node::Element->new("foreignKey", "r");
 		my $new2 = XML::XPath::Node::Element->new("column", "r");
-		$new2->setAttribute("name", $node->findvalue('const/@value'));
+		if (my $v = $node->findvalue('const/@targ')) {
+			$new2->setAttribute("targ", $v);
+		} else {
+			$new2->setAttribute("value", $node->findvalue('const/@value'));
+		}
 		my $node2 = ($node->findnodes('b:rv2hv/r:column'))[0];
-		$new->setAttribute("name", $node2->getAttribute("name"));
+		if (my $v = $node2->getAttribute("targ")) {
+			$new->setAttribute("targ", $v);
+		} else {
+			$new->setAttribute("name", $node2->getAttribute("value"));
+		}
 		$new->appendChild($new2);
 		$settings->{replaceNode}->($node, $new);
 	},
 	'//b:helem[b:rv2hv/b:rv2sv/b:gv/@name="_"]' => sub {
 		my ($node, $op, $settings) = @_;
 		my $new = XML::XPath::Node::Element->new("column", "r");
-		$new->setAttribute("name", $node->findvalue('const/@value'));
+		if (my $v = $node->findvalue('const/@targ')) {
+			$new->setAttribute("targ", $v);
+		} else {
+			$new->setAttribute("value", $node->findvalue('const/@value'));
+		}
 		$settings->{replaceNode}->($node, $new);
 	},
 	'//b:padsv' => sub {
 		my ($node, $op, $settings) = @_;
 		my $new = XML::XPath::Node::Element->new("perlVar", "r");
 		$new->setAttribute("name", $node->getAttribute('name'));
+		$new->setAttribute("targ", $node->getAttribute('targ'))
+			if $node->getAttribute('targ');
 		$settings->{replaceNode}->($node, $new);
 	},
 	'//b:eq[not(*/@b)]' => sub {
@@ -315,13 +329,19 @@ our $UPDATE = {
 	'//b:helem[b:rv2hv/b:rv2sv/b:gv/@name="_"' => sub {
 		my ($node, $op, $settings) = @_;
 		my $new = XML::XPath::Node::Element->new("column", "r");
-		$new->setAttribute("name", $node->findvalue('const/@value'));
+		if (my $v = $node->findvalue('const/@targ')) {
+			$new->setAttribute("targ", $v);
+		} else {
+			$new->setAttribute("value", $node->findvalue('const/@value'));
+		}
 		$settings->{replaceNode}->($node, $new);
 	},
 	'//b:padsv' => sub {
 		my ($node, $op, $settings) = @_;
 		my $new = XML::XPath::Node::Element->new("perlVar", "r");
 		$new->setAttribute("name", $node->getAttribute('name'));
+		$new->setAttribute("targ", $node->getAttribute('targ'))
+			if $node->getAttribute('targ');
 		$settings->{replaceNode}->($node, $new);
 	},
 	'//b:sassign[not(*/@b)]' => sub {
@@ -513,7 +533,6 @@ sub _build_columns {
 		while($parsing =~ m/^(.*?)->(.*)/) {
 			my $this = $1;
 			$parsing = $2;
-			#print "Parsing $parsing\n";
 			my $new_spec = $current_table->{table_spec} . "->$this";
 
 			my $new_path = $self->foreign_keys($table_object->_storm()->{$current_table->{table_name}})->{$this};
@@ -663,7 +682,7 @@ sub do_query {
 				my $colname = $basename;
 				my $col = $fk;
 				while(1) {
-					$colname .= "->" . $col->getAttribute("name");
+					$colname .= "->" . $col->getAttribute("value");
 					last unless $col = $col->getFirstChild;
 				}
 				$fk_colname_map->{$fk} = $colname;
@@ -674,12 +693,6 @@ sub do_query {
 
 	$self->_build_columns($params->{table}, $tables, $columns, $required_columns, 1, \$table_id);
 	$self->_build_columns($params->{table}, $tables, $columns, $params->{recommended_columns}, 0, \$table_id) if ($params->{recommended_columns});
-
-	if ($params->{views} and not $is_update) {
-		foreach my $view(sort keys %{ $params->{views} }) {
-			$columns->{"VIEW->$view"} = $params->{views}->{$view} . " AS $view";
-		}
-	}
 
 	# Build the SQL
 
@@ -704,10 +717,7 @@ sub do_query {
 
 	if (not $params->{recommended_columns}) {
 		$table_clause ||= $iquote . $params->{table}->name . $iquote;
-		my $view_clause = $params->{views} ?
-		", " . join(", ", map { $params->{views}->{$_} . " AS $_" } sort keys %{ $params->{views} })
-		: "";
-		$query = "SELECT *$view_clause FROM $table_clause";
+		$query = "SELECT * FROM $table_clause";
 	} else {
 		$query = "SELECT " . join(",", values %$columns) . " FROM $table_clause";
 		my $lc = 0;
@@ -773,9 +783,9 @@ sub do_query {
 	}
 
 	my $sth = $params->{table}->_storm->dbi->prepare($query);
-	$sth->execute(@bind_params);
+	$sth->execute(@bind_params) or die("DBI exec error: " . $params->{table}->_storm->dbi->errstr);
 
-	$table_mapping ||= $self->build_table_mapping($params->{table}, $sth, $params->{record_base_reference} || $params->{table}->name(), $self->{views});
+	$table_mapping ||= $self->build_table_mapping($params->{table}, $sth, $params->{record_base_reference} || $params->{table}->name());
 	return ($sth, $table_mapping);
 }
 
@@ -826,22 +836,12 @@ sub build_table_mapping {
 	my $table = shift;
 	my $sth = shift;
 	my $base = shift || $table->name();
-	my $views = shift;
 
-	my $views_start_at = 0;
 	my $toreturn = { };
 	die("No name array on statement handle") unless $sth->{NAME};
 
-	if ($views) {
-		$views_start_at = @{ $sth->{NAME} };
-		foreach(reverse sort keys %$views) {
-			$toreturn->{"VIEW->$_"} = $views_start_at--;
-		}
-	}
-
 	my $lc = 0;
 	foreach my $colname (@{ $sth->{NAME} }) {
-		next if ($views_start_at and $lc >= $views_start_at);
 		$toreturn->{"$base->$colname"} = $lc++;
 	}
 
@@ -879,7 +879,7 @@ sub _flatten_where {
         } elsif ($node->getTagName eq "foreignKey") {
                 return $columns->{$fks->{$node}};
 	} elsif ($node->getTagName eq "column") {
-		return $iquote . $node->getAttribute("name") . $iquote;
+		return $iquote . $node->getAttribute("value") . $iquote;
 	} else {
 		$$abort = "Unknown operation " . $node->getTagName;
 	}
@@ -913,7 +913,7 @@ sub _flatten_update {
 		push @$params, $node->getAttribute("value");
 		return "?";
 	} elsif ($node->getTagName eq "column") {
-		return $node->getAttribute("name");
+		return $node->getAttribute("value");
 	} elsif ($node->getTagName eq "nextUpdate") {
 		return ",";
 	} elsif ($node->getTagName eq "foreignKey") {

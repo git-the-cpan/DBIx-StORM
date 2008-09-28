@@ -12,7 +12,7 @@ sub MY::postamble {
 
 		return <<"MAKE_FRAG";
 apidoc:
-	NaturalDocs --input $ip --output HTML $op --project $proj
+	NaturalDocs -r --input $ip --output HTML $op --project $proj
 
 checkpod:
 	podchecker \$(MAN1PODS) \$(MAN3PODS)
@@ -30,9 +30,9 @@ WriteMakefile(
 		 Carp          => 0,
 		 constant      => 0,
 		 DBI           => 0,
-		 FindBin       => 0,
+		 FindBin       => 0, # For the tests
 		 overload      => 0,
-		"Scalar::Util" => 0,
+		"Scalar::Util" => 1.14,
 		"XML::XPath"   => 0,
 	},
 	ABSTRACT_FROM => 'lib/DBIx/StORM.pm', # retrieve from module

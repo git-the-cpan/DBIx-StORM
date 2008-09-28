@@ -107,6 +107,13 @@ gv => {
 		} else {
 			return (($cv->PADLIST->ARRAY)[1]->ARRAY)[$op->padix]->SAFENAME;
 		}
+	},
+	targ => sub {
+		my ($op, $cv) = @_;
+		if (not $op->isa("B::SVOP")) {
+			return $op->padix;
+		}
+		return "";
 	}
 },
 const => {
@@ -121,6 +128,10 @@ const => {
 		if ($sv->FLAGS & B::SVf_IOK()) { return $sv->int_value; }
 		if ($sv->FLAGS & B::SVf_POK()) { return $sv->PV; }
 		return "";
+	},
+	targ => sub {
+		my ($op, $cv) = @_;
+		return $op->targ;
 	}
 },
 padsv => {
@@ -128,6 +139,10 @@ padsv => {
 		my ($op, $cv) = @_;
 		my $sv = (($cv->PADLIST->ARRAY)[0]->ARRAY)[$op->targ]->PV;
 		return $sv;
+	},
+	targ => sub {
+		my ($op, $cv) = @_;
+		return $op->targ;
 	}
 },
 

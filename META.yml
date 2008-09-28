@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:                DBIx-StORM
-version:             0.09
+version:             0.10
 abstract:            Perl extension for object-relational mapping
 license:             ~
 author:              
@@ -14,7 +14,7 @@ requires:
     DBI:                           0
     FindBin:                       0
     overload:                      0
-    Scalar::Util:                  0
+    Scalar::Util:                  1.14
     XML::XPath:                    0
 meta-spec:
     url:     http://module-build.sourceforge.net/META-spec-v1.3.html

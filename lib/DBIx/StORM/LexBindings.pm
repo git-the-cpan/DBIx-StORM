@@ -152,4 +152,40 @@ sub lexmap {
 	return $map;
 }
 
+=begin NaturalDocs
+
+Method: fetch_by_targ (public static)
+
+  Return the value of a variable in scope in a given code ref where
+  the targ parameter (index into the stash) is known. You can hand
+  in a previously calculated stash array if preferred, to save the
+  overhead of rebuilding it.
+
+Parameters:
+
+  CodeRef $codref - The code reference to inspect
+  ArrayRef $valsi - The stash for the code-ref, or undef if not known
+  Integer $targ   - The index into the stash of the desired element
+
+Returns:
+
+  ArrayRef - The stash for the code-ref
+  Scalar   - The value for the given index as a perl scalar
+
+=end NaturalDocs
+
+=cut
+
+sub fetch_by_targ {
+	my ($class, $coderef, $valsi, $targ) = @_; 
+
+	if (not $valsi) {
+		(undef, $valsi) = svref_2object($coderef)->PADLIST->ARRAY;
+	}
+
+	my $value = DBIx::StORM::LexBindings->b_to_item(($valsi->ARRAY)[$targ]);
+
+	return ($valsi, $value ? $value->[0] : undef);
+}
+
 1;

@@ -9,7 +9,7 @@ Class: DBIx::StORM::Table
 An StORM class representing a table.
 
 This class inherits from DBIx::StORM::RecordSet, so can be grep'd (filtered),
-sorted and viewed. You can also insert new rows. Tables can be array
+and sorted. You can also insert new rows. Tables can be array
 dereferenced to iterate over the rows in the table.
 
 =end NaturalDocs
@@ -21,10 +21,8 @@ use warnings;
 use base "DBIx::StORM::RecordSet";
 
 use Carp;
-use DBIx::StORM::FilteredRecordSet;
-use DBIx::StORM::OrderedRecordSet;
-use DBIx::StORM::RecordArray;
-use DBIx::StORM::RecordSetWithView;
+
+use DBIx::StORM::Record;
 
 =begin NaturalDocs
 
@@ -265,10 +263,8 @@ sub grep {
 		storm            => $self->_storm,
 		wheres           => [ ],
 		sorts            => [ ],
-		views            => { },
 		perl_wheres      => [ ],
 		perl_sorts       => [ ],
-		perl_views       => { }
 	});
 }
 
@@ -303,47 +299,8 @@ sub sort {
 	        storm            => $self->_storm,
 	        wheres           => [ ],
 	        sorts            => [ ],
-	        views            => { },
 	        perl_wheres      => [ ],
 	        perl_sorts       => [ ],
-	        perl_views       => { }
-	});
-}
-
-=begin NaturalDocs
-
-Method: view (public instance)
-
-  Create a new DBIx::StORM::RecordSet with derivable columns added.
-
-Parameters:
-
-  HashList - The keys in this has the names of the column to create. The value may either be a perl subref which defines how the column is calculated, or a string containing a SQL snippet to generate the column
-
-Returns:
-
-  Object - A new DBIx::StORM::RecordSet which contains the same rows with the new columns added
-
-=end NaturalDocs
-
-=cut
-
-sub view {
-	my $self = shift;
-	my $new_views = { @_ };
-
-	return DBIx::StORM::RecordSetWithView->_new({
-	        parent           => $self,
-	        table            => $self,
-	        required_columns => [ @{ $self->primary_key } ],
-	        storm            => $self->_storm,
-	        new_views        => $new_views,
-	        wheres           => [ ],
-	        sorts            => [ ],
-	        views            => { },
-	        perl_wheres      => [ ],
-	        perl_sorts       => [ ],
-	        perl_views       => { }
 	});
 }
 
@@ -444,7 +401,6 @@ sub _rebuild_record {
 	        recommended_columns => $recommended_columns,
 	        table => $self,
 	        wheres => $wheres,
-		views => undef,
 		record_base_reference => $$record->{base_reference}
         });
 
@@ -611,6 +567,64 @@ sub identity {
 	        resultset      => $self,
 	        base_reference => $self->name
 	});
+}
+
+=begin NaturalDocs
+
+Method: PUSH (private instance)
+
+  Insert a new row into the table through array emulation.
+
+  If $row is an object of class DBIx::StORM::Record then it will be
+  inserted into the table (an exception will be thrown if this record
+  was created for a different table.
+
+  If $row is a subroutine reference then a new record will be created
+  and passed into the subroutine as $_. The subroutine can then initalise
+  the record, which will be written to the database on completion of the
+  subroutine.
+
+  If $row is a hashref then a new record will be created and the fields
+  will be copied from the hash and into the record.
+
+Parameters:
+
+  $row - The record to insert
+
+Returns:
+
+  $rows - The number of rows in the table
+
+=end NaturalDocs
+
+=cut
+
+sub PUSH {
+	my $self = shift;
+
+	foreach my $row (@_) {
+		if (ref($row) and blessed($row) and
+			$row->isa("DBIx::StORM::Record")) {
+			die("Not implemented");
+		} elsif (ref($row) eq "CODE") {
+			$self->_table->insert($row);
+		} elsif (ref($row) eq "HASH") {
+			my $record = $self->_table->insert;
+			while(my($k, $v) = each %$row) {
+				$record->{$k} = $v;
+			}
+			$record->commit;
+		} else {
+			croak("Cannot coerce '$row' to a StORM record");
+		}
+	}
+
+	if (defined wantarray) {
+		# Curses, someone actually cares about the return value
+		# We need to query the database to get the row count in
+		# the "array".
+		die("Not implemented");
+	}
 }
 
 1;

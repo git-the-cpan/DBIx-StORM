@@ -122,7 +122,10 @@ sub __dbix_storm_make_connect {
 	use Carp;
 	
 	my $config = $package->__dbix_storm_get_config;
-	if ($config->{live_connection}) { return $config->{live_connection} };
+	if ($config->{live_connection} and
+		$config->{live_connection}->dbi->ping) {
+		return $config->{live_connection}
+	};
 	
 	my $connection;
 	my $conndetails = $config->{connection};
@@ -409,7 +412,6 @@ sub unserialise {
 	        recommended_columns => undef,
 	        table => $table,
 	        wheres => \@where,
-		views => undef,
 		record_base_reference => $table->name
         });
 

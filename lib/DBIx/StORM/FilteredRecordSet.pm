@@ -81,19 +81,26 @@ sub _do_binding {
 		return $self->SUPER::_do_binding($filter, $parsed, $mode);
 	}
 
-	my $lexmap = DBIx::StORM::LexBindings->lexmap($filter);
-
+	my ($lexmap, $valsi);
 	my ($document, $xp) = @$parsed;
-	foreach my $node($xp->findnodes('//perlVar')) {
+	foreach my $node($xp->findnodes('//*[@targ]')) {
+		my $targ = $node->getAttribute("targ");
+		($valsi, my $val) = DBIx::StORM::LexBindings->fetch_by_targ(
+			$filter, $valsi, $targ
+		);
+		$node->setAttribute("value", $val);
+	}
+	foreach my $node($xp->findnodes('//perlVar[not(@targ)]')) {
+		$lexmap ||= DBIx::StORM::LexBindings->lexmap($filter);
 		no strict "refs";
 		my $var = $node->getAttribute("name");
-		return undef unless $var =~ m/^\$/;
+		return undef unless $var =~ m/^\$(.+)/;
+		my $p = $1;
 
 		my $val;
-		$val = defined($lexmap->{$var}) ? $lexmap->{$var} : $$_;
+		$val = defined($lexmap->{$var}) ? $lexmap->{$var} : $$p;
 
 		$node->setAttribute("value", $val);
-
 	}
 	push @{ $self->{wheres} }, $document;
 

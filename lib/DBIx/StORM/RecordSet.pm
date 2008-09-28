@@ -8,26 +8,13 @@ use warnings;
 use overload '@{}' => "_as_array",
              '""' => "_as_string";
 
+use Carp;
+use Scalar::Util qw(blessed);
+
 use DBIx::StORM::FilteredRecordSet;
 use DBIx::StORM::LexBindings;
 use DBIx::StORM::OrderedRecordSet;
 use DBIx::StORM::ParseCV;
-use DBIx::StORM::RecordSetWithView;
-
-=begin NaturalDocs
-
-Variable: $filter_map (private static)
-
-  An array of cached results from parsing perl subroutine references
-  into SQL. The first level is a hash reference based on the usage of
-  the subroutine (eg. filter, view, sort) and the next level is based
-  on the stringified value of the code reference.
-
-=end NaturalDocs
-
-=cut
-
-our $filter_map = { };
 
 =begin NaturalDocs
 
@@ -55,7 +42,7 @@ Method: _do_parse (private instance)
 Parameters:
 
   Scalar $filter - The code reference or the string to parse
-  String $mode - The type of parse required for perl (eg. select, view, order)
+  String $mode - The type of parse required for perl (eg. select, order)
 
 Returns:
 
@@ -79,11 +66,15 @@ sub _do_parse {
 	}
 	
 	# Is it in the cache?
-	my $parsed = $filter_map->{$mode}->{$filter};
+	my $parsed;
+	my $storm  = $self->_storm;
 
 	# Compile the code if we haven't seen this sub before
-	unless (exists $filter_map->{$mode}->{$filter}) {
-		$parsed = $self->_parse($filter, $mode);
+	if (exists $$storm->{cache}->{filters}->{$mode}->{$filter}) {
+		$parsed = $$storm->{cache}->{filters}->{$mode}->{$filter};
+	} else {
+		$parsed = $$storm->{cache}->{filters}->{$mode}->{$filter} =
+			$self->_parse($filter, $mode);
 	}
 
 	# Now perform variable bindings. This changes for every time
@@ -111,7 +102,7 @@ Method: _parse (private instance)
 Parameters:
 
   CodeRef $filter - The code reference to parse
-  String $mode - The type of parse required (eg. select, view, order)
+  String $mode - The type of parse required (eg. select, order)
 
 Returns:
 
@@ -173,10 +164,8 @@ sub grep {
 		perl_ancestor    => $perl_ancestor,
 		wheres           => [ @{ $self->{wheres}      }],
 		sorts            => [ @{ $self->{sorts}       }],
-		views            => { %{ $self->{views}       }},
 		perl_wheres      => [ @{ $self->{perl_wheres} }],
 		perl_sorts       => [ @{ $self->{perl_sorts}  }],
-		perl_views       => { %{ $self->{perl_views}  }},
 	});
 }
 
@@ -218,54 +207,8 @@ sub sort {
 		perl_ancestor    => $perl_ancestor,
 		wheres           => [ @{ $self->{wheres}      }],
 		sorts            => [ @{ $self->{sorts}       }],
-		views            => { %{ $self->{views}       }},
 		perl_wheres      => [ @{ $self->{perl_wheres} }],
 		perl_sorts       => [ @{ $self->{perl_sorts}  }],
-		perl_views       => { %{ $self->{perl_views}  }},
-	});
-}
-
-=begin NaturalDocs
-
-Method: view (instance)
-
-  Create a <DBIx::StORM::RecordSetWithView> to represent a set of
-  results from the database with computed columns
-
-Parameters:
-
-  %new_views - The view columns as hash with keys as a column name and
-               values a code reference or string
-
-Returns:
-
-  An object of type <DBIx::StORM::OrderedRecordSet>
-
-=end NaturalDocs
-
-=cut
-
-sub view {
-	my $self = shift;
-	my $new_views = { @_ };
-
-	my $perl_ancestor = $self->{perl_filter} ||
-		$self->{perl_ancestor};
-
-	return DBIx::StORM::OrderedRecordSet->_new({
-		@_,
-		new_views        => $new_views,
-		parent           => $self,
-		required_columns => $self->{required_columns},
-		storm            => $self->_storm,
-		table            => $self->_table,
-		perl_ancestor    => $perl_ancestor,
-		wheres           => [ @{ $self->{wheres} }],
-		sorts            => [ @{ $self->{sorts} }],
-		views            => { %{ $self->{views} }},
-		perl_wheres      => [ @{ $self->{perl_wheres} }],
-		perl_sorts       => [ @{ $self->{perl_sorts} }],
-		perl_views       => { %{ $self->{perl_views} }},
 	});
 }
 
@@ -462,7 +405,7 @@ Parameters:
 
 Returns:
 
-  ArrayRef - An array reference tied to class <DBIx::StORM::RecordArray>
+  ArrayRef - An array reference tied to this class.
 
 =end NaturalDocs
 
@@ -473,22 +416,14 @@ sub _as_array {
 
 	# If there are any perl filters, we can't use the tied version
 	if (($self->{perl_wheres} and @{ $self->{perl_wheres} }) or
-	    ($self->{perl_sorts } and @{ $self->{perl_sorts } }) or
-	    ($self->{perl_views } and %{ $self->{perl_views } })) {
+	    ($self->{perl_sorts } and @{ $self->{perl_sorts } })) {
 		return $self->array();
         }
 
-	my ($sth, $table_mapping) = $self->_get_sth();
+	($self->{sth}, $self->{table_mapping}) =
+		$self->_get_sth();
 
-	my @result;
-	tie @result, "DBIx::StORM::RecordArray", {
-		resultset     => $self,
-		table_mapping => $table_mapping,
-		table         => $self->_table(),
-		sth           => $sth,
-		complete      => $self->_recommended_columns() ? 0 : 1
-	};
-
+	tie my @result, ref($self), $self;
 	return \@result;
 }
 
@@ -500,6 +435,11 @@ Method: array (instance)
   objects. Unlike the array dereference, this returns a proper perl
   array rather than a tied array. This means you can randomly access
   the results, but it also takes a lot of memory
+
+  It also means you can't push() onto it to add more rows.
+
+  This method is likely to go away when the fake array gets real
+  enough to fool.
 
 Parameters:
 
@@ -592,7 +532,6 @@ sub _get_sth {
 	                $self->_recommended_columns() ? 0 : 1,
 	        table               => $self->{table},
 	        wheres => @{ $self->{wheres} } ? $self->{wheres} : undef,
-	        views  => %{ $self->{views } } ? $self->{views } : undef,
 	        sorts  => @{ $self->{sorts } } ? $self->{sorts } : undef,
 	});
 }
@@ -637,7 +576,6 @@ sub update {
 			updates => $parsed->[0],
 		        table   => $self->{table},
 		        wheres  => @{ $self->{wheres} } ? $self->{wheres} : undef,
-		        views   => %{ $self->{views } } ? $self->{views } : undef,
 		});
 	} else {
 		$self->_storm->_debug(1, "Failed to optimise update");
@@ -677,19 +615,23 @@ sub delete {
 }
 
 sub _do_binding {
-	my $self   = shift;
-	my $filter = shift;
-	my $parsed = shift;
-	my $mode   = shift;
+	my ($self, $filter, $parsed, $mode) = @_;
 
         if (uc($mode) ne "UPDATE") {
                 die("Bad binding mode - only UPDATE supported (not $mode)");
         }
 
-	my $lexmap = DBIx::StORM::LexBindings->lexmap($filter);
-
+	my ($lexmap, $valsi);
 	my ($document, $xp) = @$parsed;
-	foreach my $node($xp->findnodes('//perlVar')) {
+	foreach my $node($xp->findnodes('//*[@targ]')) {
+		my $targ = $node->getAttribute("targ");
+		($valsi, my $val) = DBIx::StORM::LexBindings->fetch_by_targ(
+			$filter, $valsi, $targ
+		);
+		$node->setAttribute("value", $val);
+	}
+	foreach my $node($xp->findnodes('//perlVar[not(@targ)]')) {
+		$lexmap ||= DBIx::StORM::LexBindings->lexmap($filter);
 		no strict "refs";
 		my $var = $node->getAttribute("name");
 		return undef unless $var =~ m/^\$(.+)/;
@@ -704,6 +646,97 @@ sub _do_binding {
 	}
 
 	return 1;
+}
+
+sub TIEARRAY {
+	my $class = shift;
+	my $self  = shift;
+	
+	$self->{pointer} ||= 0;
+
+	return $self;
+}
+
+sub EXTEND { }
+
+=begin NaturalDocs
+
+Method: FETCH (private instance)
+
+  Fetch a DBIx::StORM::Record object for the next result in the RecordSet.
+
+Parameters:
+
+  String $index - The column name to fetch
+
+Returns:
+
+  Object - of type DBIx::StORM::Record
+
+=end NaturalDocs
+
+=cut
+
+sub FETCH {
+	my $self = shift;
+	my $index = shift;
+
+	DBIx::StORM->_debug(3, "accessing index $index\n");
+
+	# DBI doesn't really do random access (some databases don't appreciate
+	# it), so the veneer is only supposed to permit simple in-order
+	# iteration. It turns out you need hold on to the previous result
+	# if you want foreach to work.
+	if ($self->{pointer} - 1 != $index and $self->{pointer} != $index) {
+		die("Out of order Record array access not permitted");
+	}
+
+	# If foreach wants the previous result, we can skip a whole load
+	# of effort as we cached it.
+	if ($self->{pointer} - 1 == $index) { return $self->{last_result}; }
+
+	# Increment our expectation of the next index we're expecting
+	$self->{pointer}++;
+
+	# Get the data for the row and clone it so it can be modified.
+	return undef if ($self->{sth}->rows == 0);
+	my $row = [ $self->{sth}->fetchrow_array ];
+
+	# We should have got a row - otherwise we've run off the end of the
+	# "array"
+	if (not @$row) { return undef; }
+
+	# We may need to build a table mapping if this is the first result in
+	# the RecordSet
+	if (not $self->{table_mapping}) {
+		$self->{table_mapping} = $self->_table->_storm->_sqldriver->build_table_mapping($self->{table}, $self->{sth});
+	}
+
+	# If the connection has an inflation callback, call it now
+	if (my @i = $self->_table->_storm->_inflaters) {
+		foreach(@i) {
+			$row = $_->inflate($self->_table->_storm, $row, $self->{sth},
+				$self->{table_mapping});
+		}
+	}
+
+	# And actually make the result
+	return $self->{last_result} = DBIx::StORM::Record->_new({
+		table          => $self->_table,
+		content        => $row,
+		base_reference => $self->_table->name(),
+		resultset      => $self,
+		table_mapping  => $self->{table_mapping}
+	});
+}
+
+sub FETCHSIZE {
+	return shift()->{sth}->rows;
+}
+
+foreach my $method (qw(STORE STORESIZE PUSH POP SHIFT UNSHIFT SPLICE DELETE EXISTS)) {
+	no strict "refs";
+	*$method = sub { croak("cannot $method a RecordSet"); }
 }
 
 1;

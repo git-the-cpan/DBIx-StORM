@@ -1,5 +1,18 @@
 Revision history for Perl extension DBIx::StORM.
 
+0.10
+	- Addition of connection_cached() wrapper around DBI
+	- Now requires Scalar::Util v1.14 for weaken()
+	- Removed several tie classes by folding them into their
+	  parent classes
+	- Fixed broken caching on subroutine parse
+	- Looks up subroutine items by scratchpad instead of name
+	- Remove broken "Views" feature
+	- Support for push()ing records onto tables as insert
+	- Check whether connection is dead inside Class
+	- Tables are cached to avoid having two seperate instances at
+	  once
+
 0.09
 	- Added mailing list to documentation
 	- Tidied up the documentation for the benefit of CPAN

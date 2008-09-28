@@ -1,4 +1,4 @@
-DBIx-StORM version 0.09
+DBIx-StORM version 0.10
 =======================
 
 An embryonic, but advanced database-driven Perl ORM with support for
@@ -32,7 +32,7 @@ This module requires these other modules and libraries:
 
   Perl v5.6.0 or later
   DBI
-  Scalar::Util
+  Scalar::Util v1.14 or later
   XML::XPath
 
 COPYRIGHT AND LICENCE
