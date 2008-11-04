@@ -9,7 +9,7 @@ use overload '@{}' => "_as_array",
              '""' => "_as_string";
 
 use Carp;
-use Scalar::Util qw(blessed);
+use Scalar::Util qw(blessed weaken);
 
 use DBIx::StORM::FilteredRecordSet;
 use DBIx::StORM::LexBindings;
@@ -70,11 +70,14 @@ sub _do_parse {
 	my $storm  = $self->_storm;
 
 	# Compile the code if we haven't seen this sub before
-	if (exists $$storm->{cache}->{filters}->{$mode}->{$filter}) {
+	if (exists $$storm->{cache}->{filters}->{$mode}->{$filter}
+		and $$storm->{cache}->{filters}->{$mode}->{$filter}->[0]) {
 		$parsed = $$storm->{cache}->{filters}->{$mode}->{$filter};
 	} else {
-		$parsed = $$storm->{cache}->{filters}->{$mode}->{$filter} =
-			$self->_parse($filter, $mode);
+		$parsed = $self->_parse($filter, $mode);
+		my $parse = [ $filter, $parsed ];
+		weaken($parse->[0]);
+		$$storm->{cache}->{filters}->{$mode}->{$filter} = $parse;
 	}
 
 	# Now perform variable bindings. This changes for every time
@@ -625,6 +628,7 @@ sub _do_binding {
 	my ($document, $xp) = @$parsed;
 	foreach my $node($xp->findnodes('//*[@targ]')) {
 		my $targ = $node->getAttribute("targ");
+		next unless "$targ" > 0;
 		($valsi, my $val) = DBIx::StORM::LexBindings->fetch_by_targ(
 			$filter, $valsi, $targ
 		);

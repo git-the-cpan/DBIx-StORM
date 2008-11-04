@@ -85,6 +85,7 @@ sub _do_binding {
 	my ($document, $xp) = @$parsed;
 	foreach my $node($xp->findnodes('//*[@targ]')) {
 		my $targ = $node->getAttribute("targ");
+		next unless "$targ" > 0;
 		($valsi, my $val) = DBIx::StORM::LexBindings->fetch_by_targ(
 			$filter, $valsi, $targ
 		);

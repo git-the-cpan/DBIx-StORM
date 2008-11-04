@@ -13,6 +13,7 @@ sub MY::postamble {
 		return <<"MAKE_FRAG";
 apidoc:
 	NaturalDocs -r --input $ip --output HTML $op --project $proj
+	\$(PERL) -i -ple 's#<p>=end NaturalDocs</p>##g;' `find $op -type f -name '*.html'`
 
 checkpod:
 	podchecker \$(MAN1PODS) \$(MAN3PODS)
